@@ -52,7 +52,10 @@ export function moduleHeader({ req, title, sub }) {
   return h('header', { class: 'mod-head' }, [
     req ? h('span', { class: 'mod-req', text: req }) : null,
     h('h1', { class: 'mod-title', text: title }),
-    h('p', { class: 'mod-sub', text: sub }),
+    // sub 允许内联标签（<strong> 等）：模块的副标题里确实会用强调。
+    // 早先用 textContent 渲染，结果标签被当字面文字显示出来 —— 截图里一眼可见，
+    // 任何 DOM 断言都查不出"页面上的文字多了一堆尖括号"。
+    sub ? h('p', { class: 'mod-sub', html: sub }) : null,
   ]);
 }
 
@@ -61,9 +64,10 @@ export function moduleHeader({ req, title, sub }) {
 export function tipBox({ title = '计划员小贴士', lines = [], tone = '' } = {}) {
   return h('div', { class: `tip ${tone === 'alert' ? 'tip-alert' : ''}`.trim() }, [
     h('p', { class: 'tip-title', text: title }),
-    ...[].concat(lines).map((l) => (typeof l === 'string'
-      ? h('p', { text: l })
-      : h('p', { html: l }))),
+    // 字符串一律按 HTML 渲染：贴士文案里用了 <strong>/<code> 做强调，
+    // 用 textContent 会把标签当字面文字显示在页面上（截图里一眼可见，
+    // 而任何 DOM 断言都只看到"文字变长了"，查不出来）。
+    ...[].concat(lines).map((l) => h('p', { html: l })),
   ]);
 }
 

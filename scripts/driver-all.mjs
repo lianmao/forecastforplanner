@@ -112,13 +112,43 @@
         mod.failures.push(`画布尺寸异常 ${size}`);
       }
     }
-    // 模块自身声明的控件数必须与 DOM 里能抓到的数量一致
-    try { mod.declaredControls = globalThis.__FFP_DEBUG__.controlCount(); } catch { /* ignore */ }
+    // 多子图（grid 数组）必须真的分格：
+    // ECharts 的轴默认 gridIndex=0，不逐个指定就会把 4 个子图的坐标轴全画在第一个网格上，
+    // 渲染出来是"标签糊成一团 + 下面大片空白"。断言查不出这种视觉问题，
+    // 但可以断言"轴的 gridIndex 互不相同 + 网格位置互不相同"这个结构性前提。
+    for (const d of (globalThis.__FFP_DEBUG__.chartDump() || [])) {
+      if ((d.gridCount || 0) > 1) {
+        const xi = d.axisGridIdx?.x || [];
+        const yi = d.axisGridIdx?.y || [];
+        const okX = xi.length === d.gridCount && new Set(xi).size === xi.length;
+        const okY = yi.length === d.gridCount && new Set(yi).size === yi.length;
+        if (!okX || !okY) {
+          mod.failures.push(`多子图轴的 gridIndex 未逐个分配（x=[${xi}] y=[${yi}]，共 ${d.gridCount} 个网格）`);
+        }
+        const tops = (d.grids || []).map((g) => Number(g.top));
+        if (tops.length > 1 && new Set(tops).size !== tops.length) {
+          mod.failures.push(`多子图网格位置重叠 tops=[${tops}]`);
+        }
+      }
+    }
 
     const inputs = Array.from(document.querySelectorAll('#view input'));
     mod.controlCount = inputs.length;
     out.totalControls += inputs.length;
     if (!inputs.length) mod.failures.push('模块没有任何控件');
+
+    // 页面文本里不该出现未解析的标签或 HTML 实体。
+    // 这一条是从两个真实缺陷里来的：模块副标题和贴士文案用了 textContent 渲染，
+    // 结果页面上的 <strong>、<br>、&gt; 被当字面文字显示出来。
+    // 这类缺陷任何 DOM 断言都查不到（文字只是"变长了"），但可以用文本模式扫出来。
+    {
+      const txt = document.getElementById('view').textContent || '';
+      const tags = txt.match(/<\/?[a-z][a-z0-9]*\s*\/?>/gi);
+      const entities = txt.match(/&(lt|gt|amp|nbsp|quot|#\d+);/gi);
+      if (tags) mod.failures.push(`页面文本出现未解析标签：${[...new Set(tags)].slice(0, 4).join(' ')}`);
+      if (entities) mod.failures.push(`页面文本出现未转义实体：${[...new Set(entities)].slice(0, 4).join(' ')}`);
+      mod.rawTagLeaks = (tags ? tags.length : 0) + (entities ? entities.length : 0);
+    }
 
     // 第一轮
     const pending = [];

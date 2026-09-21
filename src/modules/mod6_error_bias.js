@@ -82,12 +82,13 @@ export default {
       const f = forecast;
       const t = charts.theme();
 
-      const over = a.map((v, i) => Math.max(0, f[i] - v));
-      const under = a.map((v, i) => Math.min(0, f[i] - v));
+      // 两块误差阴影都用「透明基线 + 正向堆叠面积」画，**不要用负数堆叠**：
+      // 负数堆叠会让区域锚到 0 轴以下（截图里一眼就能看出阴影跑到了图表底部），
+      // 而正向堆叠的区间两端必然落在两条线之间，无论哪条在上。
+      const over = a.map((v, i) => Math.max(0, f[i] - v));    // 高估：锚在「实际」之上
+      const underUp = a.map((v, i) => Math.max(0, v - f[i])); // 低估：锚在「系统预测」之上
 
-      const anchor1 = a; // 高估区间锚在「实际」之上
-      const anchor2 = a; // 低估区间单独一个 stack，向「实际」之下生长
-      const invisible = (data, stack, showInLegend = false) => ({
+      const invisible = (data, stack) => ({
         name: `_anchor_${stack}`,
         type: 'line',
         data,
@@ -97,7 +98,7 @@ export default {
         itemStyle: { opacity: 0 },
         areaStyle: { opacity: 0 },
         silent: true,
-        showInLegend,
+        showInLegend: false,
         tooltip: { show: false },
         legendHoverLink: false,
         z: 1,
@@ -124,10 +125,10 @@ export default {
         xAxis: charts.catAxis(testLabels, {}),
         yAxis: charts.valAxis('出货量'),
         series: [
-          invisible(anchor1, 'over'),
+          invisible(a, 'over'),
           region('高估区间', over, 'over', t.danger),
-          invisible(anchor2, 'under'),
-          region('低估区间', under, 'under', t.ok),
+          invisible(f, 'under'),
+          region('低估区间', underUp, 'under', t.ok),
           charts.line('实际销量', a, { color: t.ink2, width: 2.6, z: 6 }),
           charts.line('系统预测', f, { color: t.s[0], width: 2.2, dash: 'dashed', z: 5 }),
         ],

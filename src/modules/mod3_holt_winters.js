@@ -96,7 +96,12 @@ export default {
       const fitMae = mae(actualPairs, fittedPairs);
 
       charts.setOption(chartEl, {
-        ...charts.baseOption({}),
+        ...charts.baseOption({
+          // ★ 图例必须用白名单：ECharts 的系列**没有** showInLegend 属性，
+          //   唯一可靠的排除方式是不把它的名字放进 legend.data。
+          //   否则置信区间带会多出一项「xxx 上界」，看起来像两个不同的东西。
+          legend: { data: ['历史实际', '模型拟合', '无阻尼外推（φ=1）', `预测（φ=${state.phi.toFixed(2)}）`] },
+        }),
         xAxis: charts.catAxis(labels, { zoom: null }),
         yAxis: charts.valAxis('出货量'),
         series: [

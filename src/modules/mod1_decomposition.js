@@ -78,19 +78,19 @@ export default {
       const t = charts.theme();
       const isAdd = state.mode === 'additive';
 
-      /* ── 4 宫格布局：主图高、三条分量各占一段 ── */
-      const XS = [0, 1, 2, 3].map(() => charts.catAxis(s.labels, {}));
-      XS[0].axisLabel.show = true;
-      XS[0].axisLabel.fontSize = 11;
+      /* ── 4 宫格布局：主图高、三条分量各占一段 ──
+         容器高度固定 640px，所以网格用**像素**定位，不用百分比 ——
+         百分比在不同容器高度下会互相挤压，像素值是确定的。
+         轴的 gridIndex 必须逐个指定，否则全部画在第一个网格上。 */
+      const XS = [0, 1, 2, 3].map((i) => charts.catAxis(s.labels, { gridIndex: i }));
       for (let i = 0; i < 3; i++) XS[i].axisLabel.show = false;
 
       const yAxis = [
-        charts.valAxis('出货量'),
-        charts.valAxis('趋势 T'),
-        charts.valAxis(isAdd ? '季节 S（件）' : '季节 S（倍数）'),
-        charts.valAxis('残差 R'),
+        charts.valAxis('出货量', { gridIndex: 0 }),
+        charts.valAxis('趋势 T', { gridIndex: 1 }),
+        charts.valAxis(isAdd ? '季节 S（件）' : '季节 S（倍数）', { gridIndex: 2 }),
+        charts.valAxis('残差 R', { gridIndex: 3 }),
       ];
-      // 分量子图的高度都小，坐标轴标签只留 3 个刻度，免得挤满
       for (let i = 1; i <= 3; i++) {
         yAxis[i].splitNumber = 2;
         yAxis[i].axisLabel.fontSize = 10;
@@ -117,10 +117,10 @@ export default {
         }),
         animation: false,
         grid: [
-          { left: 64, right: 22, top: 32, height: '31%' },
-          { left: 64, right: 22, top: '45%', height: '14%' },
-          { left: 64, right: 22, top: '61%', height: '14%' },
-          { left: 64, right: 22, top: '77%', height: '14%' },
+          { left: 64, right: 22, top: 56, height: 184 },
+          { left: 64, right: 22, top: 300, height: 85 },
+          { left: 64, right: 22, top: 415, height: 85 },
+          { left: 64, right: 22, top: 530, height: 85 },
         ],
         xAxis: XS,
         yAxis,

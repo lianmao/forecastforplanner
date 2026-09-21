@@ -122,6 +122,19 @@ export function digest() {
 export function dump() {
   const rows = [];
   for (const [el, c] of registry) {
+    if (c.isDisposed()) continue;
+    let grids = null;
+    let axisGridIdx = null;
+    try {
+      const opt = c.getOption();
+      if (Array.isArray(opt.grid)) {
+        grids = opt.grid.map((g) => ({ top: g.top, left: g.left, height: g.height }));
+        axisGridIdx = {
+          x: (opt.xAxis || []).map((a) => a.gridIndex ?? 0),
+          y: (opt.yAxis || []).map((a) => a.gridIndex ?? 0),
+        };
+      }
+    } catch { /* ignore */ }
     rows.push({
       id: el.id || '(no id)',
       disposed: c.isDisposed(),
@@ -135,6 +148,9 @@ export function dump() {
       canvasInDoc: el.querySelectorAll('canvas').length > 0
         && document.contains(el.querySelector('canvas')),
       echartsWidth: (() => { try { return c.getWidth(); } catch { return -1; } })(),
+      gridCount: grids ? grids.length : 0,
+      grids,
+      axisGridIdx,
     });
   }
   return rows;
@@ -158,7 +174,9 @@ export function baseOption({ grid, legend, tooltip, dataZoom } = {}) {
     legend: legend === false ? undefined : {
       type: 'scroll',
       top: 0,
-      left: 0,
+      // ★ 图例靠右：Y 轴名（nameLocation 默认 'end'）画在网格左上角，
+      //   图例放左边会和它叠在一起。这是所有单网格图都会踩的坑。
+      right: 0,
       itemWidth: 14,
       itemHeight: 8,
       itemGap: 12,
@@ -181,14 +199,21 @@ export function baseOption({ grid, legend, tooltip, dataZoom } = {}) {
   };
 }
 
-/** 类目轴（时间标签） */
-export function catAxis(labels, { name, zoom = null, boundaryGap = false } = {}) {
+/**
+ * 类目轴（时间标签）
+ * @param {object} o
+ * @param {number} [o.gridIndex] ★ 多子图时必须显式指定：ECharts 的轴默认 gridIndex=0，
+ *   **不会**按数组下标自动分配。漏掉这一项会让所有子图的坐标轴全部画在第一个网格上，
+ *   渲染出来就是"标签糊成一团 + 下面大片空白"。这个 bug 断言查不出来，只能靠看截图。
+ */
+export function catAxis(labels, { name, zoom = null, boundaryGap = false, gridIndex = 0 } = {}) {
   const t = theme();
   const axis = {
     type: 'category',
     data: labels,
     boundaryGap,
     name,
+    gridIndex,
     nameTextStyle: { color: t.muted, fontSize: 12 },
     axisLine: { lineStyle: { color: t.line2 } },
     axisTick: { show: false },
@@ -201,8 +226,8 @@ export function catAxis(labels, { name, zoom = null, boundaryGap = false } = {})
   return axis;
 }
 
-/** 数值轴 */
-export function valAxis(name, { min, max, formatter, scale = true } = {}) {
+/** 数值轴（同样必须带上 gridIndex，理由见 catAxis） */
+export function valAxis(name, { min, max, formatter, scale = true, gridIndex = 0 } = {}) {
   const t = theme();
   return {
     type: 'value',
@@ -210,6 +235,7 @@ export function valAxis(name, { min, max, formatter, scale = true } = {}) {
     min,
     max,
     scale,
+    gridIndex,
     nameTextStyle: { color: t.muted, fontSize: 12 },
     axisLine: { show: false },
     axisTick: { show: false },
@@ -283,6 +309,10 @@ export function scatter(name, data, { color, size = 9, symbol = 'circle' } = {})
  * 置信区间带：用「两条堆叠折线」实现。
  * 下界线透明、上界线画面积 —— 这是 ECharts 做区间带的通行做法，
  * 直接给一条线设 areaStyle 只会填到 0 轴。
+ *
+ * ★ 上界那条不放进图例：ECharts 的系列没有 showInLegend 属性，
+ *   排除图例项的唯一可靠方式是**不把名字加进 legend.data 白名单**。
+ *   把 legend.data 显式列出来的调用方自然只剩一条「xxx 区间」。
  */
 export function band(lower, upper, { color, name = '95% 区间', opacity = 0.14 } = {}) {
   const t = theme();
@@ -347,6 +377,7 @@ export function fmt(v, digits = null) {
 /** 轴标签紧凑格式：1.2万 / 3500 */
 export function compact(v) {
   if (v === null || v === undefined || Number.isNaN(v)) return '';
+  if (v === 0) return '0';   // 0 必须显示成 '0'，不能落进下面 <1 的分支变成 '0.00'
   const a = Math.abs(v);
   if (a >= 1e8) return `${(v / 1e8).toFixed(1)}亿`;
   if (a >= 1e4) return `${(v / 1e4).toFixed(a >= 1e6 ? 0 : 1)}万`;

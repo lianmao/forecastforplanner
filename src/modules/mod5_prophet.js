@@ -143,36 +143,51 @@ export default {
         ],
       }, { notMerge: true });
 
-      /* ── 组件拆解看板：4 个 grid 纵向排列 ── */
-      const XS = [0, 1, 2, 3].map(() => charts.catAxis(allLabels, {}));
+      /* ── 组件拆解看板：4 个 grid 纵向排列 ──
+         容器固定 560px → 网格用像素定位；轴的 gridIndex 必须逐个指定
+         （ECharts 默认 gridIndex=0，不指定就会全部叠在第一个网格上）。 */
+      const XS = [0, 1, 2, 3].map((i) => charts.catAxis(allLabels, { gridIndex: i }));
       for (let i = 0; i < 3; i++) XS[i].axisLabel.show = false;
-      // 组件子图不需要完整标签，避免拥挤
       XS[3].axisLabel.fontSize = 10;
 
-      const mkY = (name, opts = {}) => {
-        const a = charts.valAxis(name, opts);
+      const mkY = (name, i) => {
+        const a = charts.valAxis(name, { gridIndex: i });
         a.splitNumber = 2;
         a.axisLabel.fontSize = 10;
         return a;
       };
       const isMult = state.mode === 'multiplicative';
-      const zeroLine = isMult ? 1 : 0;
 
       charts.setOption(compEl, {
-        ...charts.baseOption({ grid: false, legend: false, dataZoom: false, tooltip: { trigger: 'axis' } }),
+        ...charts.baseOption({ grid: false, legend: false, tooltip: { trigger: 'axis' } }),
         animation: false,
+        // 组件图也要能缩放：周内效应在 3 年区间里压缩成一条密集带，
+        // 不放大根本读不出"周日高、周四低"的形状。
+        dataZoom: [
+          { type: 'inside', xAxisIndex: [0, 1, 2, 3], start: 0, end: 100 },
+          {
+            type: 'slider',
+            xAxisIndex: [0, 1, 2, 3],
+            height: 18,
+            bottom: 6,
+            start: 0,
+            end: 100,
+            borderColor: charts.theme().line2,
+            textStyle: { color: charts.theme().muted, fontSize: 11 },
+          },
+        ],
         grid: [
-          { left: 70, right: 24, top: 22, height: '33%' },
-          { left: 70, right: 24, top: '48%', height: '13%' },
-          { left: 70, right: 24, top: '65%', height: '13%' },
-          { left: 70, right: 24, top: '82%', height: '13%' },
+          { left: 70, right: 24, top: 32, height: 158 },
+          { left: 70, right: 24, top: 236, height: 78 },
+          { left: 70, right: 24, top: 348, height: 78 },
+          { left: 70, right: 24, top: 456, height: 78 },
         ],
         xAxis: XS,
         yAxis: [
-          mkY(isMult ? '长期趋势（水平）' : '长期趋势', {}),
-          mkY(isMult ? '周内因子（×）' : '周内效应', {}),
-          mkY(isMult ? '年度因子（×）' : '年度效应', {}),
-          mkY(isMult ? '节假日因子（×）' : '节假日效应', {}),
+          mkY(isMult ? '长期趋势（水平）' : '长期趋势', 0),
+          mkY(isMult ? '周内因子（×）' : '周内效应', 1),
+          mkY(isMult ? '年度因子（×）' : '年度效应', 2),
+          mkY(isMult ? '节假日因子（×）' : '节假日效应', 3),
         ],
         series: [
           charts.line('趋势', pad(g.components.trend, 0), { color: t.s[0], width: 1.6, xAxisIndex: 0, yAxisIndex: 0 }),

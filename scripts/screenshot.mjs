@@ -117,7 +117,8 @@ const chrome = spawn(
     '--no-default-browser-check',
     `--window-size=${VIEWPORT.width},${VIEWPORT.height}`,
     `--remote-debugging-port=${PORT}`,
-    `--user-data-dir=${join(process.env.TMPDIR || '/tmp', 'cdp-shot-profile')}`,
+    // 唯一 profile：固定目录会让 Chrome 恢复上次的标签页，截图可能拍在陈旧页面上
+    `--user-data-dir=${join(process.env.TMPDIR || '/tmp', `cdp-shot-${process.pid}-${Date.now()}`)}`,
     URL_TO_OPEN,
   ],
   { stdio: 'ignore' },
