@@ -1,0 +1,5 @@
+echarts  5.5.1   → vendor/echarts.esm.js (638.1 KB)
+esbuild  0.28.2   (仅构建期使用，运行时不加载)
+
+重新生成：npm run vendor
+勿手工编辑 vendor/ 下的文件。
