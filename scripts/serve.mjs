@@ -50,15 +50,28 @@ const server = createServer(async (req, res) => {
       return
     }
 
-    const info = await stat(filePath).catch(() => null)
-    if (!info || !info.isFile()) {
+    // 目录请求要落到该目录的 index.html —— GitHub Pages 就是这么做的，
+    // 本地服务必须一致，否则 /lectures/ 在本地 404 而在线上 200，
+    // 你会对着一个"本地坏、线上好"的假差异查半天。
+    const resolve = async (p) => {
+      const info = await stat(p).catch(() => null)
+      if (info && info.isDirectory()) {
+        const idx = join(p, 'index.html')
+        const i2 = await stat(idx).catch(() => null)
+        return i2 && i2.isFile() ? idx : null
+      }
+      return info && info.isFile() ? p : null
+    }
+
+    const info = await resolve(filePath)
+    if (!info) {
       res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found: ' + urlPath)
       return
     }
 
-    const body = await readFile(filePath)
+    const body = await readFile(info)
     res.writeHead(200, {
-      'Content-Type': TYPES[extname(filePath)] || 'application/octet-stream',
+      'Content-Type': TYPES[extname(info)] || 'application/octet-stream',
       'Content-Length': body.length,
       // No caching locally: a stale module silently invalidates your test run.
       'Cache-Control': 'no-store',

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 0 讲 数据清洗与异常修复 · Forecast for Planner 讲义</title>
+<meta name="description" content="分清缺货导致的假零销量与真实需求的零销量；IQR 盖帽、中位数替换、剔除插值三类修复策略的代价对比，以及为什么必须先修缺货再判异常。">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f6feb'/%3E%3Cpath d='M6 22 L12 14 L17 18 L26 8' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../src/style.css">
+<link rel="stylesheet" href="lecture.css">
+</head>
+<body data-lec="mod0">
+
+<div class="lec-shell">
+  <aside class="lec-toc" id="lecToc"></aside>
+
+  <article class="lec-body">
+    <p class="lec-kicker">第 0 讲 · 数据准备 · REQ-MOD-00</p>
+    <h1 class="lec-h1">数据清洗与异常修复</h1>
+    <p class="lec-lead">
+      预测模型的第一道门槛不是算法，而是"送进去的历史数据是不是真的"。
+      历史销量里通常混着两类完全不同的脏数据：<strong>大客户一次性团购</strong>造出的假高峰，
+      和<strong>工厂断料缺货</strong>造出的假洼地。它们需要用相反的方向去修，
+      修反了比不修更糟 —— 这一讲先把这两类分清楚。
+    </p>
+
+    <h2><span class="h2n">1</span>这一讲要解决的问题</h2>
+    <p>
+      假设你手上有一条 48 个月的历史出货序列（本讲义所有数字都来自互动工具里的那条序列，
+      你可以逐项复算）。它的样子很典型：整体在缓慢上升、有明显淡旺季，中间夹着两个尖得离谱的峰，
+      还有几段掉到 0 的坑。如果直接把这条序列喂给预测模型，会同时发生两件坏事：
+    </p>
+    <ul>
+      <li><strong>把缺货当成需求萎缩</strong>：模型看到销量掉到 0，学到的结论是"需求没了"，
+        下一周期计划量跟着下调 → 备货更少 → 再次缺货 → 销量再掉。<strong>恶性断货循环</strong>就是这样来的。</li>
+      <li><strong>把单次爆单当成爆发增长</strong>：模型学到"需求暴涨"，
+        于是按远超真实需求的水平备货 → 货压在库里 → 呆滞积压。</li>
+    </ul>
+    <p>
+      两个方向相反的错，成因却都是同一件事：<strong>没有区分"数据记录的问题"与"市场真实发生的问题"</strong>。
+      清洗的本质是做出这个区分，而不是"把异常点删掉让曲线好看"。
+    </p>
+
+    <h2><span class="h2n">2</span>理论：两类脏数据的性质完全不同</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th></th><th>爆单（假高峰）</th><th>缺货（假洼地）</th></tr></thead>
+      <tbody>
+        <tr><th>成因</th><td>大客户一次性团购、渠道压货、促销冲量</td><td>工厂断料、停产、仓库爆仓限制发运</td></tr>
+        <tr><th>数据表现</th><td>单期数值远高于邻近期</td><td>连续若干期为 0（或极低）</td></tr>
+        <tr><th>需求其实是多少</th><td>真实需求没那么高（<b>高估</b>了）</td><td>真实需求并不低（<b>低估</b>了）</td></tr>
+        <tr><th>修的方向</th><td>向下压</td><td>向上补</td></tr>
+        <tr><th>不修的后果</th><td>按虚高需求备货 → 呆滞积压</td><td>按虚假低需求备货 → 恶性断货</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="box tip">
+      <p class="box-t">一个反直觉的事实</p>
+      <p>
+        这两类脏数据对统计量的影响方向也是相反的。在互动工具的那条序列上实测：
+        只把 5 个缺货假零点用线性插值补回来，整条序列的均值就从 <b>1363</b> 抬到 <b>1525</b>
+        （+11.9%）；而只做爆单盖帽，均值会从 1363 压到 <b>1258</b>。
+        <b>两者都不是"更干净的中间值"，而是分别修正了一个方向的偏差。</b>
+        所以"要不要清洗"这个问题的正确形式是：<b>这条序列上，哪一类偏差在主导？</b>
+      </p>
+    </div>
+
+    <h2><span class="h2n">3</span>怎么判定"异常"：IQR 与阈值 k</h2>
+    <p>
+      判定一个点是不是异常，需要一条"正常范围"的边界。最常用的两种做法是 3σ 原则和 IQR（四分位距）法。
+      本项目用 IQR，原因是它对极端值不敏感 —— 而我们要找的恰恰就是极端值，
+      用 σ 会因为异常点自身把标准差撑大而漏判。
+    </p>
+    <div class="eq">
+      <span class="lbl">IQR 判定边界（k 为灵敏度，k 越小越激进）</span>
+      <span class="line">IQR = Q3 − Q1&nbsp;&nbsp;（Q1、Q3 = 第 25、75 百分位）</span>
+      <span class="line">上界 = Q3 + k × IQR&nbsp;&nbsp;&nbsp;下界 = Q1 − k × IQR</span>
+    </div>
+    <p>
+      落在上下界之外的点判为异常。在这条序列上（<b>已剔除缺货点后</b>计算）实测：
+      Q1 = 1270、Q3 = 1500、IQR = 231，取 k = 1.5 得到下界 <b>924</b>、上界 <b>1846</b>。
+    </p>
+    <p>
+      阈值 k 到底有多要紧？在同一份数据上把 k 从 1.0 拉到 3.0，被判为异常的点数与边界一起在变：
+    </p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th class="num">k</th><th class="num">下界</th><th class="num">上界</th><th class="num">判为异常</th><th class="prose">一句话</th></tr></thead>
+      <tbody>
+        <tr><td class="num">1.0</td><td class="num">1039</td><td class="num">1731</td><td class="num">6 个</td><td class="prose">误判 1 个正常点</td></tr>
+        <tr><td class="num">1.5</td><td class="num">924</td><td class="num">1846</td><td class="num">5 个</td><td class="prose">6 处异常抓住 5 处</td></tr>
+        <tr><td class="num">2.0</td><td class="num">809</td><td class="num">1961</td><td class="num">4 个</td><td class="prose">漏判 2022-03</td></tr>
+        <tr><td class="num">3.0</td><td class="num">578</td><td class="num">2192</td><td class="num">2 个</td><td class="prose">只剩极端爆单</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>每一行背后发生了什么：</p>
+    <ul>
+      <li><b>k=1.0</b>：下界 1039。2021-10 的实际值 1038 件，<b>只比下界低 1 件</b>就被判成异常 ——
+        这是一个完全正常的淡季月份。阈值太激进，会把正常波动也压掉，人为抹平真实波动。</li>
+      <li><b>k=1.5</b>：本数据集 6 处人为异常抓住 5 处（2022-03 的 1699 件差一点没进来）。</li>
+      <li><b>k=2.0</b>：上界升到 1961，2022-03 的 1699 件不再被判为异常。</li>
+      <li><b>k=3.0</b>：上界 2192，4 处中等幅度异常全部漏判，只剩下两个 3.2 倍的极端爆单。</li>
+    </ul>
+    <div class="box warn">
+      <p class="box-t">k = 1.5 是惯例，不是定律</p>
+      <p>
+        1.5 这个数字来自 Tukey 的箱线图约定，它没有任何"统计正确性"的含义 ——
+        换成 1.0 或 2.0 在数学上都成立，只是取舍不同：
+        <b>k 小 → 漏判少、误判多（把正常波动也压掉，人为抹平了真实波动）；
+        k 大 → 误判少、漏判多（放过真实异常，让爆单污染基准）</b>。
+        讲义给不出普适最优值，能给的只有上面这张表：先看你的数据长什么样，再定 k。
+      </p>
+    </div>
+
+    <h2><span class="h2n">4</span>四种修复策略，各自的代价</h2>
+    <p>判定出异常只是第一步，"怎么修"会直接改变序列的统计特征。四种策略在同一份数据（k=1.5，缺货暂不处理）上的实测结果：</p>
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>策略</th><th>做法</th>
+          <th class="num">均值</th><th class="num">标准差</th><th class="num">变异系数 CV</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>保留原始（keep）</td>
+          <td>不动</td>
+          <td class="num">1363</td><td class="num">761</td><td class="num">55.9%</td>
+        </tr>
+        <tr>
+          <td>IQR 盖帽（winsorize）</td>
+          <td>超出边界的值压到边界</td>
+          <td class="num">1258</td><td class="num">483</td><td class="num">38.3%</td>
+        </tr>
+        <tr>
+          <td>中位数替换</td>
+          <td>用全序列中位数顶掉</td>
+          <td class="num">1209</td><td class="num">442</td><td class="num">36.5%</td>
+        </tr>
+        <tr>
+          <td>剔除 + 线性插值</td>
+          <td>删掉后前后两点连线补齐</td>
+          <td class="num">1193</td><td class="num">448</td><td class="num">37.6%</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <p>各自的适用场景与代价：</p>
+    <ul>
+      <li><b>保留原始</b>：适合异常点本身是真实需求（例如新客首单），并且你希望模型知道"这种量级会发生"。</li>
+      <li><b>IQR 盖帽</b>：<b>默认首选</b>。它保留了"这里出过大事"的信息（值仍在，只是被压到边界），只压制幅度。</li>
+      <li><b>中位数替换</b>：适合异常点明确是记录错误、与业务无关的场景；代价是抹掉了该期的量级信息。</li>
+      <li><b>剔除 + 线性插值</b>：适合数据点可丢弃、且需要完整时间轴；注意插值点是"造"出来的，不承载信息。</li>
+    </ul>
+    <p>
+      三行修复策略都改了 5 个点，标准差都从 761 降到 440~480，
+      但均值差了 65 件（1258 / 1209 / 1193）—— <strong>这就是"清洗方案"必须写进预测文档的原因</strong>：
+      同一份原始数据，换一种清洗规则，基准线就不同，后面所有数字都会跟着变。
+    </p>
+
+    <h2><span class="h2n">5</span>顺序很关键：先修缺货，再判异常</h2>
+    <p>
+      如果按直觉"先判异常、再修缺货"，会踩一个很隐蔽的坑。缺货期的销量被置 0 之后，
+      这些 0 会进入四分位的计算池，把 Q1 整体拉低。实测：同一份数据，
+      含缺货零值算出的 Q1 是 <b>1188</b>（Q3 = 1464，IQR = 276），剔除缺货点后 Q1 才是 <b>1270</b>（Q3 = 1500，IQR = 231）。
+      判定区间因此被假零点<b>撑宽</b>：下界从 924 掉到 <b>775</b>，上界从 1846 升到 <b>1877</b> ——
+      <strong>本该判为异常的低点会被放过</strong>。
+    </p>
+    <div class="box fact">
+      <p class="box-t">正确顺序（本项目采用）</p>
+      <ol>
+        <li><b>先识别缺货区间</b>，把它们标记为"数据缺失"而非"需求为 0"。</li>
+        <li><b>再判异常</b>，且这些缺货点<b>不参与</b> IQR 统计（否则会把边界带偏）。</li>
+        <li><b>最后修复</b>：异常点按所选策略处理，缺货点按所选策略补齐。</li>
+      </ol>
+      <p>
+        缺货区间的补齐方式也有取舍：<b>线性插值</b>取前后两点连线，
+        适合断供期短、周围没有明显季节性；<b>历史同期填充</b>（取去年同月）适合序列有明显年周期、
+        且当年前后也受同一因素影响。前者更"局部"，后者更"保守"。
+      </p>
+    </div>
+    <div class="eq">
+      <span class="lbl">两种缺货补齐方式</span>
+      <span class="line">线性插值： Ŷ<sub>t</sub> = Y<sub>a</sub> + (Y<sub>b</sub> − Y<sub>a</sub>) × <span class="frac"><span class="num">t − a</span><span class="den">b − a</span></span>&nbsp;&nbsp;（a、b 为断供区间前后最近的有效点）</span>
+      <span class="line">历史同期： Ŷ<sub>t</sub> = Y<sub>t−12</sub></span>
+    </div>
+    <p>
+      在这条序列上两者结果接近（补齐后均值 1525 vs 1515），差别只有 10 件 ——
+      因为断供期比较短（2~3 期），两种方法看到的信息量本来就不多。
+      断供期越长，两种方法的分歧越大。
+    </p>
+
+    <h2><span class="h2n">6</span>三个常见误用</h2>
+    <div class="box danger">
+      <p class="box-t">误用一：看到 0 就当成"没需求"</p>
+      <p>
+        这是本讲最贵的一个错误。判断方法很朴素：<b>去问供应端</b>。
+        翻一下当时的缺料记录、生产工单、发货限制，如果那几期确实发不出货，那这些 0 就不是需求信号。
+        如果历史数据里已经明确了"缺货导致"（很多 ERP 有 stockout 标记字段），
+        那就必须把它当作缺失值处理，而不是当作销量。
+      </p>
+    </div>
+    <div class="box danger">
+      <p class="box-t">误用二：把两个大客户订单当噪音删掉</p>
+      <p>
+        盖帽压缩的是幅度，不是抹除。如果你的 SKU 就是靠几个大客户活着，
+        那这些"异常值"<b>恰恰是最重要的需求信息</b>。此时正确做法不是清洗掉，
+        而是在建模时单独为"大客户订单"建一个特征（第 4 讲的做法），
+        或者把颗粒度拆到客户级再分别预测。
+      </p>
+    </div>
+    <div class="box danger">
+      <p class="box-t">误用三：清洗完不回头看</p>
+      <p>
+        清洗不是"跑一遍脚本"。至少检查两件事：<b>（1）改动点的清单</b>——
+        期数、原值、新值各是多少，能不能逐条解释；
+        <b>（2）清洗前后 CV 的变化方向</b> —— CV 一定下降，否则说明你的清洗没有起作用，
+        或者把噪音洗成了另一种噪音。本项目的互动模块把这两件事都直接显示出来。
+      </p>
+    </div>
+
+    <h2><span class="h2n">7</span>去互动模块验证什么</h2>
+    <div class="cta">
+      <p class="cta-t">打开 <a href="../index.html#mod0">数据清洗与异常修复实验</a>，按顺序试这几件事</p>
+      <ol>
+        <li>保持"保留原始脏数据"，把 <b>k</b> 从 1.5 慢慢拖到 1.0 —— 看"被改动的时间点"里
+            是否出现了 <b>2021-10</b>（一个正常的淡季月份被误判为异常）。</li>
+        <li>把 k 拖到 3.0 —— 4 处中等幅度异常（2021-07、2022-03、2023-03、2024-05）全部漏判，
+            只有两个极端爆单还在。这就是"阈值太保守"的代价。</li>
+        <li>四种异常策略逐个切换，盯住下面四个 KPI 卡：<b>标准差</b>从 761 降到哪里、
+            <b>变异系数</b>怎么变、<b>被改动的时间点</b>是几个。</li>
+        <li>把异常策略调回"保留"，只切换<b>缺货处理策略</b>到"线性插值补齐" ——
+            看均值一次性抬了 10% 以上（1363 → 1525）。这就是假零点对基准线的压制效果。</li>
+      </ol>
+      <a class="btn" href="../index.html#mod0">去动手 →</a>
+    </div>
+
+    <h2><span class="h2n">8</span>自测题</h2>
+    <div class="ex">
+      <details>
+        <summary>Q1. 一条序列上，均值 1363、标准差 761。能直接从这两个数字判断数据质量吗？</summary>
+        <div class="ans">
+          <p>
+            不能。<b>标准差大不等于数据脏</b>——真实的旺季波动、产品生命周期切换、
+            大客户订单都会让标准差变大。判断数据质量要区分"波动"与"异常"：
+            波动是<b>持续存在</b>的（每年都这样），异常是<b>孤立的</b>（只发生过一两次）。
+            IQR 法之所以适用，正是因为它基于"孤立的少数点"这个假设。
+          </p>
+        </div>
+      </details>
+      <details>
+        <summary>Q2. 为什么本讲坚持"先修缺货、再判异常"，而不是反过来？</summary>
+        <div class="ans">
+          <p>
+            因为缺货期的假零值会进入四分位计算池，把 Q1 拉低（实测 1270 → 1188），
+            判定下界因此被撑宽，导致<b>真实异常漏判</b>。
+            先把缺货点标记为"数据缺失"并排除出统计池，边界才反映真实需求分布。
+          </p>
+        </div>
+      </details>
+      <details>
+        <summary>Q3. 你的 SKU 历史里有个别月份销量是平时的 8 倍，问了销售说是两个大客户的一次性团购。该清洗掉吗？</summary>
+        <div class="ans">
+          <p>
+            不该直接清洗掉，但也不能原样喂给模型。8 倍量级如果确实会重演，
+            它就是真实需求的一部分；如果是一次性的、明年不会再有，
+            它就会把基准线永久抬高，造成后续系统性高估。
+            正确做法是：<b>把它标注为"大客户订单"并在建模时作为单独特征</b>（第 4 讲的思路），
+            让模型自己判断这类事件该给多大权重 —— 而不是由你在数据层替它做决定。
+          </p>
+        </div>
+      </details>
+    </div>
+
+    <p class="lec-foot">
+      本讲数字全部来自互动工具内生成的数据集（2021-01 ~ 2024-12，48 期，
+      含 2 处极端爆单、4 处中等幅度异常、2 段缺货共 5 个假零点）；
+      真值由生成器记录，因此每一项修复效果都能对照真值检验。可复算脚本见仓库 <code>src/core/cleaning.js</code> 与
+      <code>tests/cleaning.test.mjs</code>。
+    </p>
+  </article>
+</div>
+
+<script type="module" src="lecture.js"></script>
+</body>
+</html>

@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 2 讲 移动平均与拐点滞后 · Forecast for Planner 讲义</title>
+<meta name="description" content="滑动窗口 k 的取舍：平滑度与响应速度不可兼得，滞后 (k-1)/2 是结构性的，以及为什么居中移动平均不能用来预测。">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f6feb'/%3E%3Cpath d='M6 22 L12 14 L17 18 L26 8' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../src/style.css">
+<link rel="stylesheet" href="lecture.css">
+</head>
+<body data-lec="mod2">
+
+<div class="lec-shell">
+  <aside class="lec-toc" id="lecToc"></aside>
+
+  <article class="lec-body">
+    <p class="lec-kicker">第 2 讲 · 传统统计 · REQ-MOD-02</p>
+    <h1 class="lec-h1">移动平均与拐点滞后</h1>
+    <p class="lec-lead">
+      销售经理说"看过去 3 个月平均"，采购经理说"看过去 12 个月平均"。两个人都不错，
+      但他们要的是两件不同的事：一个要<strong>快</strong>，一个要<strong>稳</strong>。
+      这一讲把"稳"的代价<strong>量出来</strong> —— 慢了几期、慢在哪一期、代价是多少件。
+    </p>
+
+    <h2><span class="h2n">1</span>这一讲要解决的问题</h2>
+    <p>
+      移动平均是最容易上手、也最容易被误用的预测方法。它只有一件事：把过去 k 期的值平均一下，
+      当作下一期的预测。这个 k 就是全部的自由度，而它同时控制两件互相矛盾的事：
+    </p>
+    <ul>
+      <li><b>k 越大 → 越平滑</b>：单笔偶发采购（某个客户临时多拿一批）不会把预测带跑偏。</li>
+      <li><b>k 越大 → 越迟钝</b>：市场已经转向了，预测还停留在旧水平上，直到 k 期之后才反应过来。</li>
+    </ul>
+    <p>
+      麻烦在于这种迟钝不是"参数没调好"，而是<strong>结构性的</strong>：
+      因为移动平均只看得见过去，市场拐点发生时，最近 k 期的数据里还混着拐点之前的旧数据。
+    </p>
+
+    <h2><span class="h2n">2</span>公式与它的固有代价</h2>
+    <div class="eq">
+      <span class="lbl">简单移动平均（SMA）—— 等权</span>
+      <span class="line">Ŷ<sub>t+1</sub> = <span class="frac"><span class="num">1</span><span class="den">k</span></span> · (Y<sub>t</sub> + Y<sub>t−1</sub> + … + Y<sub>t−k+1</sub>)</span>
+      <span class="lbl" style="margin-top:8px">线性加权移动平均（WMA）—— 近期权重更大（权重 1,2,…,k 归一到和为 1）</span>
+      <span class="line">Ŷ<sub>t+1</sub> = Σ<sub>i=0→k−1</sub> w<sub>i</sub> · Y<sub>t−i</sub>&nbsp;&nbsp;&nbsp;w<sub>i</sub> ∝ (k − i)</span>
+    </div>
+    <p>
+      注意下标：左边是 <b>t+1</b>，右边用到的最后一期是 <b>t</b>。这就是"单侧窗口" ——
+      预测明天只能用今天和昨天，永远用不上明天的数据。滞后正是从这里长出来的：
+      如果真实水平在 t 期发生了阶跃，那么接下来的预测要花大约 (k−1)/2 期才能走到新水平附近。
+    </p>
+    <div class="box fact">
+      <p class="box-t">为什么是 (k−1)/2 而不是 k</p>
+      <p>
+        窗口内旧值和新值是一半一半混着的：k=12 时，拐点后第 1 期的预测里一半是老数据、
+        一半是拐点后的第一天。平均掉之后，预测只向前挪了一小步。
+        等它挪到接近真实水平，大约要走 (k−1)/2 期。
+      </p>
+    </div>
+
+    <h2><span class="h2n">3</span>实测：k 一变，三件事同时变</h2>
+    <p>
+      互动模块用的是一条 36 期、含明显拐点的序列（2022-01 ~ 2024-12，噪音 σ=8）。
+      把 k 从 3 拉到 12，实测结果：
+    </p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>方法</th><th class="num">k</th><th class="num">平均滞后</th><th class="num">平滑后波动 / 原波动</th><th class="num">可用预测期</th><th class="prose">读法</th></tr></thead>
+      <tbody>
+        <tr><td>SMA</td><td class="num">3</td><td class="num">1.0 期</td><td class="num">1.006</td><td class="num">34/36</td><td class="prose">几乎不降噪，但跟得紧</td></tr>
+        <tr><td>SMA</td><td class="num">6</td><td class="num">2.0 期</td><td class="num">0.999</td><td class="num">31/36</td><td class="prose">降噪与跟进的中间点</td></tr>
+        <tr><td>SMA</td><td class="num">12</td><td class="num">4.0 期</td><td class="num">0.889</td><td class="num">25/36</td><td class="prose">明显压平，代价是慢 4 期</td></tr>
+        <tr><td>WMA</td><td class="num">3</td><td class="num">0.0 期</td><td class="num">1.008</td><td class="num">34/36</td><td class="prose">近期加权，几乎不滞后</td></tr>
+        <tr><td>WMA</td><td class="num">12</td><td class="num">2.0 期</td><td class="num">0.961</td><td class="num">25/36</td><td class="prose">把 k=12 的滞后从 4 期砍到 2 期</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>
+      这张表要连着三列一起读，任何一列单独看都会误导：
+    </p>
+    <ul>
+      <li><b>滞后</b>：从 1 期涨到 4 期。拐点后你要多等 3 个月才开始调头。</li>
+      <li><b>波动比</b>：只有 k=12 才真正开始压平（0.889）。k=3 的 1.006 说明它<b>几乎没有降噪作用</b> ——
+        因为它跟得足够紧，噪音也一起跟了进来。</li>
+      <li><b>可用预测期</b>：36 期数据里，k=12 只有 25 期能算出预测值，前面 11 期用不上。
+        数据本来就不多的时候，大窗口等于浪费历史。</li>
+    </ul>
+    <div class="box tip">
+      <p class="box-t">拐点具体慢在哪一期</p>
+      <p>
+        这条序列的实际峰值出现在 <b>2023-01（1365 件）</b>。
+        用 SMA k=3 算出来的平滑峰值出现在 <b>2023-02</b> —— 滞后 <b>1 期</b>，
+        与理论值 (3−1)/2 = 1.0 完全吻合。
+        但把 k 拉到 6 和 12，实测滞后是 2.0 期与 4.0 期，<b>比理论值 2.5 与 5.5 小</b>。
+        原因是这条序列的拐点是"平台型"（在峰顶停了几个月）而不是尖峰，
+        取峰算法找到的是平台中心 —— 理论公式描述的是尖峰情形，实战中会偏小。
+      </p>
+    </div>
+
+    <h2><span class="h2n">4</span>WMA 值得用吗</h2>
+    <p>
+      WMA 把权重按 1,2,…,k 递增分配，效果是"更看重近期"。实测 k=12 时滞后从 4.0 期降到 2.0 期，
+      而波动几乎没变（0.961 vs 0.889）—— 说明它<strong>确实买到了响应速度</strong>。
+      代价是：
+    </p>
+    <ul>
+      <li>权重是人为指定的（为什么是线性、不是平方？），换一个权重规则结果就变，可解释性下降。</li>
+      <li>它仍然只用过去 k 期，k 之外的更早历史完全丢弃 —— 而指数平滑（第 3 讲）用衰减权重，
+        等价于"用上全部历史，只是越久远越轻"。</li>
+    </ul>
+    <p>
+      所以 WMA 是一个"临时加装的方向盘"，不是解决方案。真正的解法是把响应速度交给参数控制，
+      这就是下一讲的指数平滑。
+    </p>
+
+    <h2><span class="h2n">5</span>三个常见误用</h2>
+    <div class="box danger">
+      <p class="box-t">误用一：产品进入衰退期还在用 12 个月窗口</p>
+      <p>
+        这是移动平均最贵的错误。衰退期意味着真实水平在下行，而 12 个月窗口里混着大量高位旧数据，
+        预测会<b>系统性高于实际</b>，于是持续超产、持续压库。
+        判断信号很简单：如果你连续 3 个月都在"预测高于实际"，就该缩短窗口了。
+      </p>
+    </div>
+    <div class="box danger">
+      <p class="box-t">误用二：用居中移动平均做预测</p>
+      <p>
+        第 1 讲的拆解用的是"居中"平均（t 月前后各取一半），它需要未来数据，<b>只能用于事后归因</b>。
+        预测必须用这一讲的单侧窗口。两者公式长得像，用途完全不同 ——
+        混用会让你在回测里得到一个漂亮的曲线，上线后完全不准。
+      </p>
+    </div>
+    <div class="box danger">
+      <p class="box-t">误用三：以为"多试几个 k，挑回测最好的"就万事大吉</p>
+      <p>
+        挑 k 的过程是在同一份历史数据上做的，你挑出来的 k 里含有运气成分（过拟合）。
+        更稳的做法是看<b>滞后几期、波动压了多少</b>这两件事是否符合业务要求：
+        例如"我必须在上游降价后 2 个月内跟上"，那就直接算 k ≤ 2×2+1 = 5，而不是去回测里挑。
+        参数该由业务约束决定，不该由历史数据的小数点决定。
+      </p>
+    </div>
+
+    <h2><span class="h2n">6</span>去互动模块验证什么</h2>
+    <div class="cta">
+      <p class="cta-t">打开 <a href="../index.html#mod2">移动平均模块</a>，按顺序试这几件事</p>
+      <ol>
+        <li>保持 SMA，把 <b>k 从 3 慢慢拖到 12</b> —— 盯住左侧三个数字同时变化：
+            平均拐点滞后从 1.0 涨到 4.0，平滑后波动下降，可用预测期从 34 减到 25。</li>
+        <li>切到 <b>WMA</b>，同样把 k 拖到 12 —— 看"平均拐点滞后"从 4.0 掉到 2.0。
+            这就是加权买到的东西。</li>
+        <li>看图上橙色虚线标的滞后区间，把 k 从 3 调到 6，
+            确认<b>滞后标记的位置真的移动了</b>，而不是只有数字变了。</li>
+        <li>看下面的"拐点滞后明细"表：实际峰值月份、平滑峰值月份、滞后几期、实际峰值多少件 ——
+            这一行就是你要拿去跟业务方对话的证据。</li>
+      </ol>
+      <a class="btn" href="../index.html#mod2">去动手 →</a>
+    </div>
+
+    <h2><span class="h2n">7</span>自测题</h2>
+    <div class="ex">
+      <details>
+        <summary>Q1. 业务要求"上游原材料降价后，我们必须在一个季度内把预测跟上"。那 k 最多能取多少？</summary>
+        <div class="ans">
+          <p>
+            用滞后补偿公式反推：(k−1)/2 ≤ 1 期 → k ≤ 3。
+            如果在一个季度（3 期）内跟上，则 (k−1)/2 ≤ 3 → k ≤ 7。
+            这就是"参数由业务约束决定"的具体用法：先问清容忍几期滞后，再算窗口上限，
+            最后才在允许范围内按降噪需求往下调。
+          </p>
+        </div>
+      </details>
+      <details>
+        <summary>Q2. 为什么 k=3 的"平滑后波动/原波动"是 1.006（大于 1），几乎没有降噪？</summary>
+        <div class="ans">
+          <p>
+            因为这个比值衡量的是"平滑后的序列还残留多少波动"，而这条序列的波动主要来自
+            <b>趋势与拐点</b>，噪音只占一小部分。k=3 的窗口跟得很紧，趋势与拐点被完整保留，
+            噪音也只被削掉一点点，所以比值接近 1（略大于 1 是取整与端点效应）。
+            窗口拉到 12 时，拐点被"拉平"，比值才降到 0.889 —— 但那同时也把真实信号磨钝了。
+            <b>降噪与保留信号是同一枚硬币的两面。</b>
+          </p>
+        </div>
+      </details>
+      <details>
+        <summary>Q3. 实测滞后（2.0 / 4.0）比理论值（2.5 / 5.5）小，是否说明理论公式错了？</summary>
+        <div class="ans">
+          <p>
+            不是。理论值 (k−1)/2 描述的是<b>尖峰</b>（单期跳变）情形下的响应延迟；
+            这条序列的拐点是平台型，在峰顶停留了多期，取峰算法找到的是平台的中心，
+            因此测出来的滞后偏小。实战含义：<b>用理论值做保守估计，用实测值做具体沟通</b>，
+            并说明你是按哪种拐点形状测的。
+          </p>
+        </div>
+      </details>
+    </div>
+
+    <p class="lec-foot">
+      本讲数字由 <code>scripts/lecture-facts.mjs</code> 复算（见 <code>lectures/FACTS.txt</code>），
+      数据集与互动模块一致：<code>makeTurningPointSeries({ n: 36, noise: 8, seed: 7 })</code>。
+    </p>
+  </article>
+</div>
+
+<script type="module" src="lecture.js"></script>
+</body>
+</html>

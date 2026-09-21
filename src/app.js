@@ -120,6 +120,14 @@ function activate(id, pushHash = false) {
   view.replaceChildren(api.root);
   markActive(mod.id);
 
+  // 每讲都有配套讲义页（lectures/modN.html）。入口挂在模块标题下面，
+  // 只有被点名的文字是链接 —— 不做整卡可点。
+  const head = api.root.querySelector('.mod-head');
+  if (head && !head.querySelector('.mod-lec')) {
+    head.insertAdjacentHTML('beforeend',
+      `<a class="mod-lec" href="lectures/${mod.id}.html">看第 ${mod.num} 讲讲义 →</a>`);
+  }
+
   // ★ 首绘必须在**挂载之后**执行，这是整个渲染链最关键的一步。
   //   模块的 create() 只负责搭 DOM 与接线，不出图；出图在这里做：
   //   此时容器已在文档里，读 clientWidth 会强制同步布局，ECharts 才能量到真实宽度。

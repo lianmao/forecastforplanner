@@ -33,6 +33,9 @@ const OUT_DIR = process.argv[3] || '/tmp/static-app-shots'
 const STEPS_FILE = process.argv[4]
 const PORT = Number(process.env.CDP_PORT || 9334)
 const VIEWPORT = { width: 1440, height: 1000 }
+// SHOT_FULL=1 → 整页截图（长文讲义必需）；SHOT_MAX_H 限制最大高度避免超大 PNG
+const FULL_PAGE = process.env.SHOT_FULL === '1'
+const FULL_MAX_H = Number(process.env.SHOT_MAX_H || 9000)
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -159,7 +162,22 @@ try {
       if (exceptionDetails) console.log(`  [warn] ${step.name} setup threw:`, exceptionDetails.text)
     }
     await sleep(900) // let charts finish animating before capturing
-    const { data } = await client.send('Page.captureScreenshot', { format: 'png' })
+    // SHOT_FULL=1 → 整页截图（长文讲义必需：只看首屏等于没看）。
+    // 长页面会产出很大的 PNG，所以整页模式下降采样到 1x，并限制最大高度。
+    let shotParams = { format: 'png' }
+    if (FULL_PAGE) {
+      const { result } = await client.send('Runtime.evaluate', {
+        expression: 'JSON.stringify({ h: document.documentElement.scrollHeight, w: document.documentElement.clientWidth })',
+        returnByValue: true,
+      })
+      const { h, w } = JSON.parse(result.value)
+      shotParams = {
+        format: 'png',
+        captureBeyondViewport: true,
+        clip: { x: 0, y: 0, width: w, height: Math.min(h, FULL_MAX_H), scale: 1 },
+      }
+    }
+    const { data } = await client.send('Page.captureScreenshot', shotParams)
     const out = join(OUT_DIR, `${step.name}.png`)
     writeFileSync(out, Buffer.from(data, 'base64'))
     console.log(`  captured ${out}`)

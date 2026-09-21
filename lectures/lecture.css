@@ -1,0 +1,375 @@
+/* ==========================================================================
+   Forecast for Planner —— 讲义（课件）专用样式
+   复用 ../src/style.css 的设计令牌与重置，只加长文/公式/打印需要的规则。
+   约束：紧行距、移动端 44px 触控目标、只有被点名的元素是链接、数字等宽。
+   ========================================================================== */
+
+:root {
+  --prose-lh: 1.58;      /* 长文行距：比 UI 略松一点点便于阅读，但绝不放宽到 1.8 */
+  --toc-w: 232px;
+  --read-w: 748px;       /* 中文长文单行 ~40 字，长了眼睛会跳行 */
+}
+
+.lec-shell {
+  display: grid;
+  grid-template-columns: var(--toc-w) minmax(0, 1fr);
+  gap: 26px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 18px 60px;
+}
+
+/* ── 顶部条 ─────────────────────────────────────────────────────────────── */
+
+.lec-top {
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  margin-bottom: 22px;
+}
+
+.lec-top-in {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 10px 18px;
+}
+
+.lec-brand { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
+.lec-brand b { font-size: 15px; letter-spacing: .2px; }
+.lec-brand span { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+.lec-top-spacer { flex: 1 1 auto; }
+
+.lec-navlink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--ink-2);
+  text-decoration: none;
+  background: var(--panel);
+  white-space: nowrap;
+}
+.lec-navlink:hover { border-color: var(--accent); color: var(--accent); }
+.lec-navlink[aria-disabled="true"] { opacity: .4; pointer-events: none; }
+.lec-navlink.is-cur { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+/* ── 左侧目录 ───────────────────────────────────────────────────────────── */
+
+.lec-toc { position: sticky; top: 14px; align-self: start; }
+.lec-toc h2 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+.lec-toc ol { list-style: none; margin: 0; padding: 0; }
+.lec-toc a {
+  display: flex;
+  gap: 9px;
+  align-items: baseline;
+  min-height: 44px;            /* 移动端触控下限，桌面也不挤 */
+  padding: 7px 10px;
+  border-left: 2px solid var(--line);
+  color: var(--ink-2);
+  text-decoration: none;
+  font-size: 13.5px;
+  line-height: 1.35;
+}
+.lec-toc a:hover { background: var(--panel-2); color: var(--ink); }
+.lec-toc a.is-cur { border-left-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.lec-toc a .n { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; min-width: 1.6em; }
+.lec-toc a.is-cur .n { color: var(--accent); }
+.lec-toc .toc-extra { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+
+.lec-tocbtn { display: none; }
+
+/* ── 正文 ───────────────────────────────────────────────────────────────── */
+
+.lec-body { max-width: var(--read-w); min-width: 0; }
+
+.lec-kicker {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: .04em;
+}
+
+.lec-h1 {
+  font-size: 27px;
+  line-height: 1.28;
+  margin: 6px 0 10px;
+  letter-spacing: -.01em;
+}
+
+.lec-lead {
+  font-size: 15.5px;
+  color: var(--ink-2);
+  line-height: var(--prose-lh);
+  margin: 0 0 26px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.lec-body h2 {
+  font-size: 18px;
+  margin: 34px 0 12px;
+  padding-top: 4px;
+  letter-spacing: -.005em;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.lec-body h2 .h2n {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 600;
+  min-width: 1.6em;
+}
+.lec-body h3 { font-size: 15.5px; margin: 22px 0 8px; }
+.lec-body p { line-height: var(--prose-lh); margin: 0 0 13px; }
+.lec-body ul, .lec-body ol { line-height: var(--prose-lh); margin: 0 0 14px; padding-left: 22px; }
+.lec-body li { margin: 4px 0; }
+.lec-body a { color: var(--accent); text-underline-offset: 2px; }
+.lec-body strong { font-weight: 650; }
+.lec-body code {
+  font-family: var(--mono);
+  font-size: .9em;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+/* ── 公式 ───────────────────────────────────────────────────────────────── */
+
+.eq {
+  display: block;
+  margin: 14px 0 16px;
+  padding: 13px 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.9;
+  overflow-x: auto;
+  break-inside: avoid;
+}
+.eq .lbl {
+  display: block;
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+.eq .line { display: block; white-space: nowrap; }
+.eq .line + .line { margin-top: 2px; }
+.eq var, .v {
+  font-style: italic;
+  font-family: var(--mono);
+}
+.frac {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  text-align: center;
+  margin: 0 3px;
+  font-size: .92em;
+  line-height: 1.15;
+}
+.frac > .num { border-bottom: 1px solid currentColor; padding: 0 4px 1px; }
+.frac > .den { padding: 1px 4px 0; }
+
+/* ── 提示框 ─────────────────────────────────────────────────────────────── */
+
+.box {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 12px 14px;
+  margin: 16px 0;
+  break-inside: avoid;
+}
+.box > .box-t { font-weight: 650; font-size: 13.5px; margin: 0 0 6px; }
+.box p:last-child { margin-bottom: 0; }
+.box.tip { border-left-color: var(--accent); background: var(--accent-soft); }
+.box.warn { border-left-color: var(--warn); }
+.box.danger { border-left-color: var(--danger); }
+.box.fact { border-left-color: var(--ok); }
+
+/* ── 表格 ───────────────────────────────────────────────────────────────── */
+
+.lec-body table {
+  /* ★ 表格宽度不能用 width: 100%。实测（见下列列宽）：
+     width:100% → 浏览器把"多余宽度"整块塞给第一列，5 列时变成 [487,61,61,75,62]，
+     其它列被压到 60px 宽 —— 中文列一行只能放 4~5 字，看着像竖排。
+     width:max-content → [114,54,54,75,62]，列宽按内容分配，放不下时由外层滚动。
+     另外 table-layout:fixed 在这里更糟（列宽变均分，甚至出现 0 宽列）。 */
+  width: max-content;
+  border-collapse: collapse;
+  margin: 14px 0 18px;
+  font-size: 13.5px;
+  break-inside: avoid;
+}
+.lec-body th, .lec-body td {
+  border: 1px solid var(--line);
+  padding: 7px 10px;
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.5;
+  min-width: 4.5em;      /* 兜底：任何一列都不许窄到只能竖着排版 */
+}
+.lec-body th { background: var(--panel-2); font-weight: 650; white-space: nowrap; }
+/* 表格里放短散文的列（如"一句话"说明）要显式给宽度：
+   中文单元格的 max-content 在 Blink 里会被低估，不加就会压成 2~3 字一行的窄条。 */
+.lec-body td.prose, .lec-body th.prose { min-width: 11em; white-space: normal; }
+.lec-body td.num, .lec-body th.num { font-variant-numeric: tabular-nums; font-family: var(--mono); }
+.lec-body tbody tr:hover { background: var(--panel-2); }
+.table-wrap { overflow-x: auto; }
+
+/* ── 自测题 ─────────────────────────────────────────────────────────────── */
+
+.ex { margin: 16px 0; }
+.ex details {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 10px 13px;
+  margin-bottom: 9px;
+}
+.ex details[open] { border-color: var(--line-2); }
+.ex summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.5;
+  list-style-position: outside;
+  min-height: 28px;
+}
+.ex summary::marker { color: var(--accent); }
+.ex .ans {
+  margin: 10px 0 2px;
+  padding-top: 9px;
+  border-top: 1px dashed var(--line);
+  color: var(--ink-2);
+  line-height: var(--prose-lh);
+}
+.ex .ans p:last-child { margin-bottom: 0; }
+
+/* ── 去互动模块 ─────────────────────────────────────────────────────────── */
+
+.cta {
+  margin: 28px 0 8px;
+  padding: 15px 17px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
+.cta .cta-t { font-weight: 650; margin: 0 0 6px; }
+.cta ul { margin: 6px 0 10px; }
+.cta .btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 16px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 600;
+}
+.cta .btn:hover { filter: brightness(1.07); }
+
+.lec-foot {
+  margin-top: 34px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+/* ── 目录页 ─────────────────────────────────────────────────────────────── */
+
+.lec-cards { display: grid; gap: 12px; margin: 18px 0 26px; }
+.lec-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+}
+.lec-card .c-top { display: flex; gap: 10px; align-items: baseline; }
+.lec-card .c-n {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 600;
+  min-width: 3.4em;
+}
+.lec-card .c-t { font-size: 15.5px; font-weight: 650; }
+.lec-card .c-t a { color: inherit; text-decoration: none; }
+.lec-card .c-t a:hover { color: var(--accent); text-decoration: underline; }
+.lec-card p { margin: 6px 0 0; color: var(--ink-2); font-size: 13.5px; line-height: 1.55; }
+.lec-card .c-meta { margin-top: 8px; font-size: 12.5px; color: var(--muted); }
+.lec-card .c-meta a { color: var(--accent); }
+
+/* ── 响应式 ─────────────────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  :root { --prose-lh: 1.62; }
+  .lec-shell { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0 15px 44px; }
+  /* 窄屏触控目标一律 >= 44px（顶部导航在桌面 34px 够用，手机上不够） */
+  .lec-navlink, .lec-tocbtn { min-height: 44px; }
+  .lec-tocbtn {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 12px;
+    border: 1px solid var(--line-2);
+    border-radius: 8px;
+    background: var(--panel);
+    font-size: 13px;
+    color: var(--ink-2);
+  }
+  .lec-toc { position: static; margin-bottom: 4px; }
+  .lec-toc[data-collapsed="true"] ol, .lec-toc[data-collapsed="true"] .toc-extra { display: none; }
+  .lec-body { max-width: none; }
+  .lec-h1 { font-size: 23px; }
+  .lec-body h2 { font-size: 17px; }
+  .lec-top-in { flex-wrap: wrap; }
+  .lec-brand span { display: none; }
+}
+
+/* ── 打印 / 存 PDF（讲义的主要用途之一）─────────────────────────────────── */
+
+@media print {
+  :root { --prose-lh: 1.5; }
+  body { background: #fff; color: #000; font-size: 11.5pt; }
+  .lec-top, .lec-toc, .lec-tocbtn, .cta .btn, .no-print { display: none !important; }
+  .lec-shell { display: block; max-width: none; padding: 0; }
+  .lec-body { max-width: none; }
+  .eq, .box, table, .ex details { break-inside: avoid; border-color: #bbb; }
+  /* 纸上用 max-content 会超出版心被裁；改为填满版心并允许自动列宽 */
+  .lec-body table { width: auto; min-width: 0; max-width: 100%; font-size: 9.5pt; }
+  .lec-body th, .lec-body td { min-width: 0; padding: 4px 6px; }
+  .ex details > .ans { display: block !important; }   /* 打印时直接给出答案 */
+  .ex summary { list-style: none; }
+  .lec-body a { color: #000; text-decoration: none; }
+  .lec-body a::after { content: " ⟨" attr(href) "⟩"; font-size: 9pt; color: #555; }
+  .cta { border-color: #666; background: #fff; }
+  h2, h3 { break-after: avoid; }
+  @page { margin: 16mm 14mm; }
+}

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 6 讲 预测误差与 Bias 预警 · Forecast for Planner 讲义</title>
+<meta name="description" content="把「准确率 85%」拆成 MAE、MAPE、WAPE、Bias 四个数：各自回答什么问题、在什么条件下会骗人，以及为什么样本内数字不能拿去汇报。">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f6feb'/%3E%3Cpath d='M6 22 L12 14 L17 18 L26 8' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../src/style.css">
+<link rel="stylesheet" href="lecture.css">
+</head>
+<body data-lec="mod6">
+
+<div class="lec-shell">
+  <aside class="lec-toc" id="lecToc"></aside>
+
+  <article class="lec-body">
+    <p class="lec-kicker">第 6 讲 · 业务闭环 · REQ-MOD-07</p>
+    <h1 class="lec-h1">预测误差与 Bias 预警</h1>
+    <p class="lec-lead">
+      「预测准确率 85%」听起来像好消息，但它既没说你错在高估还是低估，
+      也没说错的是 100 件还是 1 万件。这一讲把那一个数拆成四个能拿去做决定的数，
+      并划清一条边界：哪些数字可以对外汇报，哪些只是模型给自己写的评语。
+    </p>
+
+    <h2><span class="h2n">1</span>这一讲要解决的问题</h2>
+    <p>
+      预测有没有用，最终要落到两个问题上：<b>方向对不对</b>、<b>量级有多大</b>。
+      一个「准确率」把这两件事糊在一起，只留下一个让人安心的百分数。于是会上常见这一幕：
+      计划员说准确率 85%，采购问那我到底该多备还是少备 —— 没人答得上来。
+    </p>
+    <p>
+      这一讲要解决的就是这个：把误差拆成 MAE、MAPE、WAPE、Bias 四个数，
+      说清每个数回答什么问题、在什么条件下会骗人、为什么必须放在一起看。
+      样本是 36 期月度数据（2022-01 ~ 2024-12），前 24 期训练、后 12 期做样本外评估；
+      模型是带阻尼的三次指数平滑（α=0.35, β=0.15, γ=0.25, φ=0.97，周期 12），
+      参数沿用第 3 讲的默认值，误差数字才有可比性。
+    </p>
+
+    <h2><span class="h2n">2</span>理论：四个指标各说各话</h2>
+    <p>四个指标里，前三个都在说「错多大」，只有一个在说「错向哪边」：</p>
+    <ul>
+      <li><b>MAE</b>：平均每期错多少件。单位跟销量一样，可以直接换算成库存和金额。</li>
+      <li><b>MAPE</b>：平均每期错百分之几。逐期算比值再平均，是报表里最常见的那一个。</li>
+      <li><b>WAPE</b>：也是错百分之几，但分母是整段时期的实际总量，不是逐期平均。</li>
+      <li><b>Bias</b>：带正负号的偏向性 —— 平均而言是系统性高估还是系统性低估。</li>
+    </ul>
+    <p>
+      业务决策对<b>方向</b>的敏感度高于对<b>量级</b>的敏感度：同样是错 8%，
+      低估会让你断货、停线、加急空运，高估只是多压一点库存。
+      两种错误的代价不对等，只看「错多大」的指标永远不够。
+    </p>
+    <p>
+      MAPE 与 WAPE 的公式只差分母：一个逐期平均，一个用总量相除 ——
+      这一处差别决定了谁在低销量数据上更靠得住。
+    </p>
+
+    <h2><span class="h2n">3</span>公式与各自的失效场景</h2>
+    <div class="eq">
+      <span class="lbl">平均绝对误差（MAE）—— 单位与销量相同</span>
+      <span class="line">MAE = <span class="frac"><span class="num">1</span><span class="den">n</span></span> · Σ |Y<sub>t</sub> − Ŷ<sub>t</sub>|</span>
+      <span class="lbl" style="margin-top:8px">平均绝对百分比误差（MAPE）—— 逐期算比值，再平均</span>
+      <span class="line">MAPE = <span class="frac"><span class="num">1</span><span class="den">n</span></span> · Σ (<span class="frac"><span class="num">|Y<sub>t</sub> − Ŷ<sub>t</sub>|</span><span class="den">|Y<sub>t</sub>|</span></span>) × 100%</span>
+      <span class="lbl" style="margin-top:8px">加权平均绝对百分比误差（WAPE）—— 先加总，再相除</span>
+      <span class="line">WAPE = <span class="frac"><span class="num">Σ |Y<sub>t</sub> − Ŷ<sub>t</sub>|</span><span class="den">Σ |Y<sub>t</sub>|</span></span> × 100%</span>
+      <span class="lbl" style="margin-top:8px">偏向性（Bias）—— 带符号，正为高估、负为低估</span>
+      <span class="line">Bias = <span class="frac"><span class="num">Σ (Ŷ<sub>t</sub> − Y<sub>t</sub>)</span><span class="den">Σ Y<sub>t</sub></span></span> × 100%</span>
+    </div>
+    <p>每个指标都有一块照不到的地方：</p>
+    <ul>
+      <li><b>MAE 不能跨品比较。</b>A 品每期卖 2 万件、B 品每期卖 500 件，
+        同样 MAE = 50 件，对 B 品是灾难，对 A 品是噪声 —— 它只在同一品的时间维度上可比。</li>
+      <li><b>MAPE 在低销量、间歇需求下失真最严重。</b>分母小，比值就爆掉；
+        实际值为 0 的那一期，数学上根本没有定义。</li>
+      <li><b>WAPE 对结构敏感。</b>一个大品类能主导分母，小品类的错误被总量掩盖 ——
+        总量层面好看不代表每个品都好看。</li>
+      <li><b>Bias 会自己抵消。</b>前半段低估、后半段高估，正负相抵后 Bias 接近 0，
+        报表看着「没有偏向」，实际一直在错，只是换了个方向。</li>
+    </ul>
+
+    <h2><span class="h2n">4</span>实测：样本内 vs 样本外</h2>
+    <p>
+      前 24 期是模型见过的历史，后 12 期是它没见过的。两个视角的误差：
+      训练集拟合残差 σ = 1089 件，样本外误差 σ = 1112 件，相差 23 件
+      （1112 − 1089，这是纯算术相减，不是新的统计量）。
+    </p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>指标</th><th class="num">数值</th><th class="prose">口径</th></tr></thead>
+      <tbody>
+        <tr><td>训练集残差 σ</td><td class="num">1089 件</td><td class="prose">样本内（前 24 期）拟合残差，模型自己觉得的精度</td></tr>
+        <tr><td>样本外误差 σ</td><td class="num">1112 件</td><td class="prose">样本外（后 12 期），真实检验</td></tr>
+        <tr><td>MAE</td><td class="num">1132 件</td><td class="prose">样本外，平均每期错这么多件</td></tr>
+        <tr><td>MAPE</td><td class="num">7.6%</td><td class="prose">样本外，12 期里排除了 0 个零值期</td></tr>
+        <tr><td>WAPE</td><td class="num">7.9%</td><td class="prose">样本外，分母是 12 期实际值总量</td></tr>
+        <tr><td>Bias</td><td class="num">-6.0%</td><td class="prose">样本外，负号表示系统性低估</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>
+      这几行要一起读。MAPE 7.6% 和 WAPE 7.9% 几乎一样，说明这份数据里没有小分母的期
+      （排除 0 个零值期）—— 数据太干净，恰好掩盖了 MAPE 的弱点。
+    </p>
+    <p>
+      真正给出行动方向的是 Bias = -6.0%：模型<b>系统性低估</b>。
+      它对应的绝对量是 857 件/期；12 期累计 857 × 12 ≈ 10284 件 ≈ 1.03 万件
+      （纯算术推导，不是新的统计量）。持续 1 万件量级的低估，
+      对应的是断货与缺料风险，<b>不是积压风险</b>。
+    </p>
+    <div class="box warn">
+      <p class="box-t">样本内 1089 比样本外 1112「更好看」，但这个数不能拿去汇报</p>
+      <p>
+        模型永远不会拿 1089 去面对市场。样本内残差是它拟合自己见过的数据留下的痕迹，
+        参数本来就是为了让这个数变小才选出来的 —— 拿它当精度，等于让考生自己判卷。
+        对外汇报一律只用样本外数字。这里两者差距不大，说明后 12 期没有结构突变；
+        如果样本外明显更差，那才是过拟合的信号。
+      </p>
+    </div>
+    <div class="box fact">
+      <p class="box-t">把 12 期预测整体上调 10%，误差会怎样</p>
+      <p>
+        MAE 从 1132 件降到 991 件（降 12.4%），MAPE 从 7.6% 降到 7.0%，
+        Bias 从 -6.0% 变成 3.4%。一个「更偏的预测」经过一次常数平移反而更准了，
+        这不是巧合：平移方向跟负的 Bias 一致，说明这 12 期确实存在系统性低估。
+      </p>
+    </div>
+    <div class="box danger">
+      <p class="box-t">★ 但真实业务里不能这么干</p>
+      <p>
+        那 10% 是拿样本外数据反推出来的：先看到后 12 期的实际值，再算出「整体偏低」，
+        最后反向平移过去。这在业务里等于<b>看着答案调参</b>，上线后没有任何保证 ——
+        下一段 12 期不会恰好也偏低 6%，你平移过去，它可能突然变成高估 3%。
+        正确做法是<b>滚动回测</b>（rolling backtest）：每过一期，用当时已发生的实际值重估一次 Bias，
+        再只做小幅修正（修正量不超过当前 Bias 的一半，并设上下限），让它逐期跟着数据走。
+        事后整体平移只能当诊断：它告诉你偏差存在，不告诉你该平移多少。
+      </p>
+    </div>
+
+    <h2><span class="h2n">5</span>三个常见误用</h2>
+    <div class="box danger">
+      <p class="box-t">误用一：只报一个「预测准确率 85%」</p>
+      <p>
+        这个数通常是 1 减去某种百分比误差，但它既没有方向（高估还是低估），
+        也没有量级（错 100 件还是错 1 万件）。至少要一起报 MAE（量级）、
+        WAPE（相对量级）、Bias（方向）；MAPE 只在品类销量稳定时才加进来。
+      </p>
+    </div>
+    <div class="box danger">
+      <p class="box-t">误用二：用样本内数字汇报精度</p>
+      <p>
+        1089 件与 1112 件的差别看着不大，性质完全不同：前者是模型对历史的拟合残差，
+        后者是它对市场的表现。拿样本内数字做选型比较，挑出来的永远是当时最幸运的参数，
+        不是最耐用的那个。
+      </p>
+    </div>
+    <div class="box danger">
+      <p class="box-t">误用三：在间歇性需求上用 MAPE 汇报</p>
+      <p>
+        备件、慢销品、项目型采购这类需求，实际值经常很小、甚至为 0，MAPE 会失控。
+        实测里把后 4 期实际值压到原值的 8%、并把其中 1 期置 0 之后，
+        同一份预测的 MAPE 从 7.6% 飙到 308%（放大 41 倍），
+        而 WAPE 只从 7.9% 涨到 48.3%（放大 6.1 倍），Bias 从 -6.0% 变成 32.6%。
+        预测本身一个字都没改，只是实际值变小了 —— 被放大的不是误差，是分母。
+      </p>
+    </div>
+
+    <h2><span class="h2n">6</span>去互动模块验证什么</h2>
+    <div class="cta">
+      <p class="cta-t">打开 <a href="../index.html#mod6">误差与 Bias 预警模块</a>，按顺序试这几件事</p>
+      <ol>
+        <li>先看默认结果：<b>MAE 1132 件、MAPE 7.6%、WAPE 7.9%、Bias -6.0%</b>。
+            四个数一起读，先自己指出哪个是量级、哪个是方向。</li>
+        <li>把「预测整体调整」从 0% 拉到 <b>+10%</b>：盯住 Bias 从 -6.0% 走向 3.4%、
+            MAE 从 1132 掉到 991。改进看着很大，但这是事后平移，不是能上线的方法。</li>
+        <li>切到<b>间歇性低销量</b>场景（把后 4 期实际值压到原值的 8%、其中 1 期置 0）：
+            看 MAPE 从 7.6% 飙到 308%（放大 41 倍）、WAPE 只从 7.9% 涨到 48.3%（放大 6.1 倍）。
+            同一份预测，两个指标给出的严重程度完全不同。</li>
+        <li>找到那期 <b>0 销量</b>：确认它的 APE 数学上无定义（分母为 0），
+            MAPE 把该期整期排除（排除 1 期），WAPE 因为分母是总量，完全不受影响。</li>
+        <li>最后看 <b>Bias 预警</b>：它给的是方向（低估还是高估）以及连续几期同向，
+            而不是又一个百分数 —— 这就是你拿去跟业务方对话的那一栏。</li>
+      </ol>
+      <a class="btn" href="../index.html#mod6">去动手 →</a>
+    </div>
+
+    <h2><span class="h2n">7</span>自测题</h2>
+    <div class="ex">
+      <details>
+        <summary>Q1. 报表上写着「MAPE 7.6%，预测很准」。作为计划员，你还必须问哪两个问题？</summary>
+        <div class="ans">
+          <p>
+            方向，和量级。<b>方向</b>要看 Bias：这份数据是 -6.0%，系统性低估，
+            真正的风险是断货而不是积压；<b>量级</b>要看 MAE：1132 件/期，
+            12 期合计约 1.03 万件（857 × 12 ≈ 10284，纯算术推导）。
+            只凭 MAPE 决定，很可能在一个正在低估的品类上继续压库存，报表还一直显示「很准」。
+          </p>
+        </div>
+      </details>
+      <details>
+        <summary>Q2. 同一份预测，把后 4 期实际值压到原值的 8%（其中 1 期置 0）之后，MAPE 放大 41 倍、WAPE 只放大 6.1 倍。为什么差这么多？</summary>
+        <div class="ans">
+          <p>
+            差在分母。MAPE 逐期算「误差 ÷ 实际值」再平均，
+            实际值一被压小，每一项的比值都变大；WAPE 用总量做分母，
+            单期的小数值被稀释，所以只温和上升。
+            至于那期 0 销量：APE 的分母为 0，数学上无定义，
+            MAPE 只能把该期整期排除（排除 1 期）；WAPE 用总量做分母，不受影响。
+            间歇性、低销量的品，MAPE 会把「其实没那么差」说成灾难。
+          </p>
+        </div>
+      </details>
+      <details>
+        <summary>Q3. 互动模块里把预测整体上调 10%，MAE 从 1132 降到 991。这是否说明「我们平时就该往预测上加 10%」？</summary>
+        <div class="ans">
+          <p>
+            不是。那 10% 是拿样本外实际值反推出来的，等于看着答案调参。
+            它证明了这 12 期存在系统性低估（Bias = -6.0%），
+            但没告诉你下一期该移多少 —— 下一段 12 期不会恰好也偏低 6%。
+            可上线的做法是滚动回测：每期用已发生的实际值重估 Bias，
+            只做小幅、有上限的修正。事后整体平移是诊断工具，不是参数。
+          </p>
+        </div>
+      </details>
+    </div>
+
+    <p class="lec-foot">
+      本讲数字由 <code>scripts/lecture-facts.mjs</code> 复算（见 <code>lectures/FACTS.txt</code>），
+      数据集与互动模块一致：<code>synthSeries({ n: 36, start: '2022-01', base: 12000, trend: 80, seasonality: 1500, noise: 700, seed: 606 })</code>，
+      前 24 期训练、后 12 期样本外评估。
+    </p>
+  </article>
+</div>
+
+<script type="module" src="lecture.js"></script>
+</body>
+</html>

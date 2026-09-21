@@ -227,9 +227,21 @@ export function trendSlope(trend) {
 /**
  * 即时合成（模块 1 的滑杆驱动方向）：由三个分量参数生成序列。
  * 与 generator.synthSeries 是两条独立实现 —— 测试会对照两者在加法下的一致性。
+ *
+ * ⚠️ 本函数是**确定性**的，不做随机数生成：噪音必须由调用方通过 seedSeries 显式给出。
+ * 早先签名里写着 `noise = 5` 却从头到尾没有使用它 —— 调用方传 noise 会静默拿到一条
+ * 零噪音序列（拆解出来的"残差标准差"会是 0.0 而不是 5），不报错、不告警。
+ * 写讲义时我自己的复算脚本就踩了这个坑，所以改成显式拒绝而不是继续静默忽略。
  */
-export function compose({ base = 1000, trend = 2, seasonality = 20, noise = 5, n = 72, mode = 'additive', seedSeries = null }) {
+export function compose({
+  base = 1000, trend = 2, seasonality = 20, n = 72, mode = 'additive', seedSeries = null, noise = undefined,
+}) {
   if (!Number.isInteger(n) || n < 3) throw new RangeError(`compose: n 需 >=3，收到 ${n}`);
+  // 拒绝的唯一情形：传了 noise 却没有给 seedSeries。
+  // （两个都传是允许的 —— 老的对照测试就同时传，noise 只是冗余，不影响结果。）
+  if (noise !== undefined && !seedSeries) {
+    throw new RangeError('compose: 不生成随机噪音，请把噪音序列显式传给 seedSeries（noise 参数已废弃）');
+  }
   const noiseArr = seedSeries || new Array(n).fill(0);
   const out = [];
   for (let t = 0; t < n; t++) {

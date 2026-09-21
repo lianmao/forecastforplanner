@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>供应链计划员的预测课：8 讲 · Forecast for Planner 讲义</title>
+<meta name="description" content="配套 Forecast for Planner 互动工具的供应链预测讲义：8 讲覆盖数据清洗、时序拆解、移动平均、指数平滑、促销特征、Prophet 式组件、误差与 Bias、安全库存。">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f6feb'/%3E%3Cpath d='M6 22 L12 14 L17 18 L26 8' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../src/style.css">
+<link rel="stylesheet" href="lecture.css">
+</head>
+<body data-lec="">
+
+<div class="lec-shell">
+  <aside class="lec-toc" id="lecToc"></aside>
+
+  <article class="lec-body">
+    <p class="lec-kicker">讲义 · 使用说明与学习路径</p>
+    <h1 class="lec-h1">供应链计划员的预测课：8 讲</h1>
+    <p class="lec-lead">
+      这套讲义是 <a href="../index.html">Forecast for Planner 互动工具</a> 的配套读物。
+      互动工具解决"手上有没有感觉"，讲义解决"讲不讲得清道理" ——
+      两者是一对：每一讲末尾都会指出去哪个模块、动手验证哪几件事。
+    </p>
+
+    <h2><span class="h2n">1</span>为什么需要这套讲义</h2>
+    <p>
+      计划员每天在用 ERP / APS / 预测系统，但系统里的参数、指标、黑盒算法大多没人解释过。
+      带来的不是"不会点按钮"，而是三件事说不清：
+    </p>
+    <ul>
+      <li><strong>参数说不清</strong>：α 调到 0.8 意味着什么？窗口从 12 缩到 3 会付出什么代价？</li>
+      <li><strong>指标说不清</strong>：别人报"预测准确率 85%"，这句话为什么几乎没有信息量？</li>
+      <li><strong>闭环说不清</strong>：预测误差 10% 到底等价于多少库存资金？服务水平从 95% 提到 99% 要花多少钱？</li>
+    </ul>
+    <p>
+      讲义的目标是让这三件事都能用一句话讲清楚，并且每句话背后都有可复算的数字 ——
+      不是"行业经验说"，而是当场能算给他看。
+    </p>
+
+    <h2><span class="h2n">2</span>八讲的结构</h2>
+    <p>
+      课程按一条主线走：<strong>先把数据弄干净 → 理解序列由什么构成 → 选一个能解释的模型 →
+      承认误差 → 把误差换算成库存与钱</strong>。前四讲是传统统计（业务基准线），
+      中间两讲是特征与组件化的现代方法，最后两讲回到业务闭环。
+    </p>
+
+    <div class="lec-cards">
+      <div class="lec-card">
+        <div class="c-top"><span class="c-n">第 0 讲</span><span class="c-t"><a href="mod0.html">数据清洗与异常修复</a></span></div>
+        <p>分清"缺货导致的假零销量"与"真的没需求"。两者修错方向相反，会分别造成积压和恶性断货。</p>
+        <div class="c-meta">配套模块：<a href="../index.html#mod0">数据清洗实验</a> · 无前置要求</div>
+      </div>
+      <div class="lec-card">
+        <div class="c-top"><span class="c-n">第 1 讲</span><span class="c-t"><a href="mod1.html">时间序列三要素拆解</a></span></div>
+        <p>把销量拆成趋势、季节、残差。看清"涨"到底是长期增长、还是只是旺季，决定了该不该扩产。</p>
+        <div class="c-meta">配套模块：<a href="../index.html#mod1">时序拆解</a> · 前置：第 0 讲</div>
+      </div>
+      <div class="lec-card">
+        <div class="c-top"><span class="c-n">第 2 讲</span><span class="c-t"><a href="mod2.html">移动平均与拐点滞后</a></span></div>
+        <p>平滑度与响应速度是一对不可兼得的目标。这一讲把"慢了几期"变成可以量出来的代价。</p>
+        <div class="c-meta">配套模块：<a href="../index.html#mod2">移动平均</a> · 前置：第 1 讲</div>
+      </div>
+      <div class="lec-card">
+        <div class="c-top"><span class="c-n">第 3 讲</span><span class="c-t"><a href="mod3.html">阻尼三次指数平滑</a></span></div>
+        <p>α / β / γ / φ 四个参数各对应一句业务话，以及一个防止长期预测"上天"的刹车。</p>
+        <div class="c-meta">配套模块：<a href="../index.html#mod3">指数平滑</a> · 前置：第 2 讲</div>
+      </div>
+      <div class="lec-card">
+        <div class="c-top"><span class="c-n">第 4 讲</span><span class="c-t"><a href="mod4.html">促销与折扣特征工程</a></span></div>
+        <p>把促销写进模型、并且检查模型到底学到了什么。重点是"能不能识别"，而不是"能不能拟合"。</p>
+        <div class="c-meta">配套模块：<a href="../index.html#mod4">促销特征</a> · 前置：第 3 讲</div>
+      </div>
+      <div class="lec-card">
+        <div class="c-top"><span class="c-n">第 5 讲</span><span class="c-t"><a href="mod5.html">Prophet 式组件拆解</a></span></div>
+        <p>趋势变点、周内节奏、年度淡旺季、节假日脉冲分开建；每一项都能单独拿给业务方看。</p>
+        <div class="c-meta">配套模块：<a href="../index.html#mod5">Prophet 组件</a> · 前置：第 4 讲</div>
+      </div>
+      <div class="lec-card">
+        <div class="c-top"><span class="c-n">第 6 讲</span><span class="c-t"><a href="mod6.html">预测误差与 Bias 预警</a></span></div>
+        <p>MAE / MAPE / WAPE / Bias 四个指标各说各话；为什么"准确率 85%"没有信息量。</p>
+        <div class="c-meta">配套模块：<a href="../index.html#mod6">误差与 Bias</a> · 前置：第 3 讲</div>
+      </div>
+      <div class="lec-card">
+        <div class="c-top"><span class="c-n">第 7 讲</span><span class="c-t"><a href="mod7.html">服务水平与安全库存</a></span></div>
+        <p>把"多备一点点"换算成年持有成本，并看清成本曲线的凸性：越往上，每提高一个百分点越贵。</p>
+        <div class="c-meta">配套模块：<a href="../index.html#mod7">安全库存</a> · 前置：第 6 讲</div>
+      </div>
+    </div>
+
+    <h2><span class="h2n">3</span>三条学习路径</h2>
+    <div class="lec-cards">
+      <div class="lec-card">
+        <div class="c-top"><span class="c-n">补基础</span><span class="c-t">完全没接触过预测模型</span></div>
+        <p>第 0 → 1 → 2 讲，每讲读完就去对应模块把滑杆拉到底看一遍 ——
+           手感比结论重要：先看见"滞后"和"噪音"长什么样，再回头看公式。</p>
+        <div class="c-meta">大约 2~3 小时</div>
+      </div>
+      <div class="lec-card">
+        <div class="c-top"><span class="c-n">解决眼前问题</span><span class="c-t">带着具体的困惑来</span></div>
+        <p>直接跳到你关心的那一讲，只读"三个常见误用"与"去互动模块验证什么"这两节。
+           这两节是每讲里信息密度最高的部分，不读理论也能拿走可执行的做法。</p>
+        <div class="c-meta">大约 20~30 分钟</div>
+      </div>
+      <div class="lec-card">
+        <div class="c-top"><span class="c-n">带教 / 内训</span><span class="c-t">给团队讲</span></div>
+        <p>按讲次顺序走；每讲讲完让学员自己拉一遍滑杆，再用"自测题"当场抽查。
+           讲义可直接打印：浏览器打印时会自动展开自测题答案、隐藏导航
+           （`@media print` 里已经处理好）。</p>
+        <div class="c-meta">每次 60~90 分钟</div>
+      </div>
+    </div>
+
+    <h2><span class="h2n">4</span>前置知识</h2>
+    <p>
+      只需要三样：会看折线图、理解百分数、知道"标准差"大致表示波动大小。
+      <strong>不需要</strong>微积分、不需要线性代数、不需要会写代码。
+      讲义里出现的每一个公式都会单独解释符号的业务含义；看不懂推导不影响使用结论，
+      但建议至少看清"哪个变大会导致哪个变大"。
+    </p>
+
+    <h2><span class="h2n">5</span>诚实声明（请先读这一段）</h2>
+    <div class="box warn">
+      <p class="box-t">这套讲义刻意不夸大它自己的适用范围</p>
+      <ul>
+        <li><strong>全部数据都是生成的</strong>。互动工具里的数据集由代码按已知参数生成，
+          所以"模型能不能学回真值"才成为一个可以断言的命题。
+          换成你公司的真实数据，结论可能需要重新验证。</li>
+        <li><strong>算法是教学用简化实现</strong>。例如指数平滑用固定初始状态、参数由用户给定，
+          不做联合最优化 —— 因此它的数字<b>不会</b>与 statsmodels 逐位一致。
+          讲义里凡涉及精度的地方都标注了实测值。</li>
+        <li><strong>结论有边界</strong>。哪些是数学上可证明的、哪些只是经验规律，
+          讲义会逐条说明。比如安全库存讲义讲的是成本曲线的<b>凸性</b>，
+          而不是"Z 值趋于无穷"这种听上去更有冲击力的说法。</li>
+        <li><strong>不提供"最佳参数"</strong>。没有任何一组 α / β / γ 适合所有 SKU；
+          讲义给的是判断方向与代价量化，不是一个可以照抄的数值。</li>
+      </ul>
+    </div>
+
+    <h2><span class="h2n">6</span>互动工具里对应什么</h2>
+    <p>
+      打开 <a href="../index.html">互动工具</a> 后，左侧是 8 个模块，与 8 讲一一对应。
+      模块点开后左下角有形如 <code>REQ-MOD-00</code> 的编号，讲义中提到编号即指该模块。
+      互动工具的所有计算都在你自己的浏览器里完成，不上传任何数据。
+    </p>
+    <div class="cta">
+      <p class="cta-t">开始</p>
+      <ul>
+        <li>第一次来：<a href="mod0.html">第 0 讲 数据清洗与异常修复</a></li>
+        <li>想先动手：<a href="../index.html#mod0">打开互动工具的数据清洗实验</a></li>
+      </ul>
+      <a class="btn" href="mod0.html">从第 0 讲开始 →</a>
+    </div>
+
+    <p class="lec-foot">
+      Forecast for Planner · 讲义与互动工具同为静态页面，可离线使用、可直接打印。
+      发现错误请提 issue：<a href="https://github.com/lianmao/forecastforplanner/issues">github.com/lianmao/forecastforplanner</a>
+    </p>
+  </article>
+</div>
+
+<script type="module" src="lecture.js"></script>
+</body>
+</html>

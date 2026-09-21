@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 4 讲 促销与折扣特征工程 · Forecast for Planner 讲义</title>
+<meta name="description" content="促销增量是「折扣深度 × 当前量级」的交互项，不是固定件数：只放促销哑变量学不到折扣弹性。本讲用实测数字说明模型把弹性学回了多少，以及促销次数太少时为什么根本学不出来。">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f6feb'/%3E%3Cpath d='M6 22 L12 14 L17 18 L26 8' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../src/style.css">
+<link rel="stylesheet" href="lecture.css">
+</head>
+<body data-lec="mod4">
+
+<div class="lec-shell">
+  <aside class="lec-toc" id="lecToc"></aside>
+
+  <article class="lec-body">
+    <p class="lec-kicker">第 4 讲 · 特征与机器学习 · REQ-MOD-03</p>
+    <h1 class="lec-h1">促销与折扣特征工程</h1>
+    <p class="lec-lead">
+      前两讲的模型都只看销量自己。可「打八折」这件事不在销量里，它在你的促销日历里。
+      这一讲把促销写成特征，然后逼模型回答一个比 R² 更硬的问题：<strong>你到底学回了多少折扣弹性</strong>。
+    </p>
+
+    <h2><span class="h2n">1</span>这一讲要解决的问题</h2>
+    <p>
+      这条序列是 2022-01 ~ 2025-04，共 40 期，历史里 8 次促销，折扣区间 0.50 ~ 0.95。
+      那些尖峰不是需求自己长出来的，是人造出来的。
+    </p>
+    <p>
+      传统时序模型面对促销月只有两种反应：当成噪音摊掉，或者当成新的水平继续外推。
+      第二种更贵 —— 促销月按高峰备货，促销后又按高峰接着备货，多出来的货全变成库存。
+    </p>
+    <ul>
+      <li>把「有没有促销、打多深」写成特征，交给最小二乘去拟合；</li>
+      <li>检验模型<strong>是不是学到了折扣弹性本身</strong> —— 不是曲线贴得好不好，是学得对不对。</li>
+    </ul>
+    <p>
+      可执行的一句：促销效应必须进特征，而且必须用<strong>交互项</strong>进，
+      否则模型会给你一个看起来很确定的错数字。
+    </p>
+
+    <h2><span class="h2n">2</span>理论：为什么必须用交互项</h2>
+    <p>
+      促销拉起的增量不是固定件数，它同时取决于折扣有多深（1 − d）和当时的量级有多大：
+      <b>ΔY ≈ κ · (1 − d) · Y<sub>基准</sub></b>。
+      基数大的 SKU 打八折多卖得也多，且多卖的量与基数成正比。
+    </p>
+    <p>
+      所以「折扣率」不能当独立的加性列，它必须<strong>乘上当时的量级</strong>才能表达这个机制 ——
+      也就是交互项 <b>(1 − d) × Lag1</b>（上期实际）。
+    </p>
+    <div class="box fact">
+      <p class="box-t">只放一个促销哑变量会发生什么（实测）</p>
+      <p>
+        Promo 促销标志的系数是 <b>50.679</b>，t 值却只有 <b>0.5</b>（|t| 要大于 2 才算站得住）。
+        系数看着不小，却完全不显著：8 次促销力度各不相同，哑变量把它们混成一团，
+        模型只能给一个谁都不代表的「平均促销效应」。
+        真正的信息在 Promo×Lag1 交互项里，那一列 t = <b>9.5</b>。
+      </p>
+    </div>
+
+    <h2><span class="h2n">3</span>公式与特征设计</h2>
+    <div class="eq">
+      <span class="lbl">训练用的线性模型（列名与互动模块一致）</span>
+      <span class="line">Ŷ<sub>t</sub> = β<sub>0</sub> + β<sub>1</sub>·Lag1<sub>t</sub> + β<sub>2</sub>·Lag2<sub>t</sub> + β<sub>3</sub>·Promo<sub>t</sub></span>
+      <span class="line">+ β<sub>4</sub>·(1 − d<sub>t</sub>)·Lag1<sub>t</sub> + β<sub>5</sub>·sin<sub>t</sub> + β<sub>6</sub>·cos<sub>t</sub></span>
+      <span class="lbl" style="margin-top:8px">数据生成侧的真值机制</span>
+      <span class="line">ΔY = κ · (1 − d) · Y<sub>基准</sub>&nbsp;&nbsp;&nbsp;&nbsp;κ<sub>真值</sub> = 2.500</span>
+      <span class="lbl" style="margin-top:8px">κ 的还原误差（判断「学对了没」用的量）</span>
+      <span class="line"><span class="frac"><span class="num">|κ<sub>学</sub> − κ<sub>真</sub>|</span><span class="den">κ<sub>真</sub></span></span> = <span class="frac"><span class="num">|2.583 − 2.500|</span><span class="den">2.500</span></span> = 3.3%</span>
+    </div>
+    <p>设计矩阵七列，六列保留、一列剔除：</p>
+    <ul>
+      <li><b>Lag1 上期实际、Lag2 上上期实际</b> —— 销量自己的历史。</li>
+      <li><b>Promo 促销标志</b> —— 那一期有没有促销（0 / 1）。</li>
+      <li><b>Promo×Lag1 折扣强度交互</b> —— (1 − d) × Lag1，它的系数就是折扣弹性 κ。</li>
+      <li><b>Month_sin / Month_cos 年度正余弦</b> —— 把「几月」写成两个连续量，免得 12 月和 1 月被当成两头。</li>
+      <li><b>Holiday 节假日标志</b> —— 因全样本恒定被剔除：40 期里它没有变化，没有变化就没有信息。</li>
+    </ul>
+    <p>
+      工程纪律一条：训练和预测必须走<strong>同一条特征构造路径</strong>，
+      否则就是「历史拟合漂亮、上线预测乱跳」的静默 bug。
+    </p>
+
+    <h2><span class="h2n">4</span>实测：模型到底学到了什么</h2>
+    <p>
+      40 期序列里前两期没有滞后特征，可用 38 行；设计矩阵 <b>38 行 × 7 列（含截距）</b>，
+      调整 R² = <b>0.9103</b>。
+    </p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>特征</th><th class="num">权重占比</th><th class="num">系数</th><th class="num">t 值</th><th class="prose">读法</th></tr></thead>
+      <tbody>
+        <tr><td>Promo×Lag1 折扣强度交互</td><td class="num">50.73%</td><td class="num">2.583</td><td class="num">9.5</td><td class="prose">真正干活的一列</td></tr>
+        <tr><td>Month_sin 年度正弦</td><td class="num">16.48%</td><td class="num">176.143</td><td class="num">5.3</td><td class="prose">年度季节性仍在</td></tr>
+        <tr><td>Lag1 上期实际</td><td class="num">15.26%</td><td class="num">−0.249</td><td class="num">−4.8</td><td class="prose">负号 = 均值回归</td></tr>
+        <tr><td>Lag2 上上期实际</td><td class="num">12.42%</td><td class="num">−0.203</td><td class="num">−3.8</td><td class="prose">同上，再弱一档</td></tr>
+        <tr><td>Promo 促销标志</td><td class="num">2.69%</td><td class="num">50.679</td><td class="num">0.5</td><td class="prose">哑变量，不显著</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>
+      权重是「标准化系数绝对值」归一化后的占比，表里只列权重最大的五项 ——
+      设计矩阵里还有一列 Month_cos 年度余弦，本讲不引用它的数值。两条要单独拎出来：
+    </p>
+    <ul>
+      <li><b>交互项扛下一半以上（50.73%），系数 2.583、t = 9.5。</b>
+        2.583 对真值 2.500 只差 3.3%，标准误 ±0.273 —— 特征写对了，它自己会把真参数找回来。</li>
+      <li><b>Lag1 / Lag2 的系数是负的（−0.249 / −0.203）。</b>
+        模型学到的不是「上期高、这期继续高」的惯性延续，而是<strong>均值回归</strong>：
+        上期冲高了，这期就往回收。第 2、3 讲的平滑类模型假设正好相反，这就是它们会被促销尖峰带跑的原因。</li>
+    </ul>
+    <div class="box fact">
+      <p class="box-t">「模型学回真值」比 R² 更有说服力</p>
+      <p>
+        调整 R² = 0.9103 只说明曲线贴合历史。一个把促销效应<strong>错摊到 Lag1 上</strong>的模型
+        同样能拿到很高的 R²，甚至更高 —— 它有更多自由度去迁就那几个尖峰。
+        真正有说服力的是 κ 的还原：学回 2.583、真值 2.500、相对误差 3.3%、t = 9.5。
+        R² 回答「贴不贴」，还原误差回答「学没学对」，后者才能拿去决策。
+      </p>
+    </div>
+
+    <h3>可识别性实验：促销次数再少会怎样</h3>
+    <p>同一套生成机制，把历史里的促销次数往下砍，看最小二乘还认不认得 κ：</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>历史里的促销次数</th><th class="num">学回的 κ</th><th class="prose">模型的结果</th></tr></thead>
+      <tbody>
+        <tr><td>8 次</td><td class="num">2.583</td><td class="prose">正常求解，可识别</td></tr>
+        <tr><td>2 次</td><td class="num">2.604</td><td class="prose">仍可识别，但只靠两个点撑着交互项</td></tr>
+        <tr><td>1 次</td><td class="num">拒绝求解</td><td class="prose">ols 报设计矩阵接近秩亏</td></tr>
+        <tr><td>0 次</td><td class="num">不可识别</td><td class="prose">交互项被剔除</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <ul>
+      <li><b>1 次促销</b>时 ols 拒绝给出数字，报「设计矩阵接近秩亏」，
+        最小主元 / 最大主元 = <b>1.87e-16</b>（已贴到机器精度）。</li>
+      <li><b>0 次促销</b>时交互项被剔除，一起被剔除的还有 Promo 促销标志和 Holiday 节假日标志 ——
+        三次剔除是同一件事的三次重复：历史里没有促销，弹性就<strong>不在数据里</strong>。</li>
+      <li>只有 1 次促销时，(1 − d) × Lag1 与 Lag1 本身在几何上分不开：一个数乘常数还是那个数。
+        要解的是<strong>没有唯一解的方程组</strong>，算法再稳也没用。</li>
+    </ul>
+    <div class="box warn">
+      <p class="box-t">共线不是算法缺陷，是数据里没有信息</p>
+      <p>
+        遇到秩亏，正确动作是承认「现在学不出来」，然后补数据（更多次、力度更分散的促销）、
+        改用正则化、或者引入先验。最不该做的是换个求解器硬跑一个数 ——
+        那只是从无穷多组解里随便挑了一个，没有业务含义，却会被当成结论写进备货计划。
+      </p>
+    </div>
+    <h3>情景预测与透支</h3>
+    <p>
+      下一期情景：<b>不开促销 1041 件</b>；<b>开 8 折促销 1783 件</b>，拉升 <b>71.3%</b>。
+      三个数是同一结论的三种写法：1041 × 1.713 ≈ 1783（纯算术推导，不是独立结论）。
+    </p>
+    <p>
+      但 1783 件只属于促销当期。促销当期拉高、之后一期回落，这一项由模型的 λ 参数控制
+      （本讲不引用它的具体数值）。备货时两期分开看：促销月按拉升后的量备，
+      紧接着的下一期按回落后的量备，否则促销月赚的销量下个月会原样躺在库里。
+    </p>
+
+    <h2><span class="h2n">5</span>三个常见误用</h2>
+    <div class="box danger">
+      <p class="box-t">误用一：把折扣率当成独立加性特征</p>
+      <p>
+        放一列「折扣率」，模型学到的就是「打八折固定增加若干件」，基数不同的两个 SKU 拿到同一增量。
+        更隐蔽的是效应会被错误地摊到 Lag1 上：本该由交互项吸收的尖峰，
+        被 Lag1 当成「上期高、这期更高」解释，你连 Lag1 的符号都会读错。
+        正确写法只有一条：(1 − d) × Lag1。
+      </p>
+    </div>
+    <div class="box danger">
+      <p class="box-t">误用二：只看 R² 和重要性排名，不看系数还原得对不对</p>
+      <p>
+        Promo 促销标志权重 2.69%、系数 50.679、t 只有 0.5 ——
+        在重要性图上它照样有名字、有条形，看不出它其实什么都没说。
+        规矩是<strong>系数必须和 t 值一起看</strong>（|t| 大于 2 才算站得住），
+        有真值的场景还要把还原误差 3.3% 一并摆上来。
+      </p>
+    </div>
+    <div class="box danger">
+      <p class="box-t">误用三：促销次数太少、力度太像，还硬要估弹性</p>
+      <p>
+        只有 1 次促销时最小二乘会拒绝求解（最小主元 / 最大主元 = 1.87e-16）；
+        2 次虽然能解（κ = 2.604），但那是两个点撑一个参数，换一段历史就会漂。
+        这时该补数据或改用正则化，不是换模型。工具也一样：
+        <strong>肯拒绝，比乱给一个数更负责任</strong>。
+      </p>
+    </div>
+
+    <h2><span class="h2n">6</span>去互动模块验证什么</h2>
+    <div class="cta">
+      <p class="cta-t">打开 <a href="../index.html#mod4">促销特征模块</a>，按顺序试这几件事</p>
+      <ol>
+        <li>看四个 KPI：κ = <b>2.583</b>（真值 2.500，相对误差 3.3%）、标准误 ±0.273（t = 9.5）、
+            调整 R² = 0.9103。第二个比第三个更值得信。</li>
+        <li>打开「未来一期开促销」：不开 <b>1041 件</b>、开 8 折 <b>1783 件</b>（拉升 71.3%）。</li>
+        <li>拖「折扣力度」从 0.95 到 0.50，看情景增量是不是<strong>超线性</strong>变化 ——
+            这正是交互项 (1 − d) × Lag1 的形状，固定件数装不下。</li>
+        <li>关掉再打开「显示特征贡献」，确认 Promo×Lag1 占 <b>50.73%</b>，Promo 促销标志只有 <b>2.69%</b>。
+            两个条形挨着看，就是这一讲的全部论点。</li>
+        <li>看「促销期与透支期明细」：自然需求真值、实际出货、模型拟合三列并排，
+            确认促销期拟合跟得上尖峰，透支期的下一行确实低于自然需求。</li>
+      </ol>
+      <a class="btn" href="../index.html#mod4">去动手 →</a>
+    </div>
+
+    <h2><span class="h2n">7</span>自测题</h2>
+    <div class="ex">
+      <details>
+        <summary>Q1. Promo 促销标志的系数是 50.679，看着不小，为什么说它没学到东西？</summary>
+        <div class="ans">
+          <p>
+            因为 t 值只有 <b>0.5</b>，离「|t| 大于 2」的门槛差得很远：
+            这个数落在标准误的量级里，换一段历史就会变号。
+            根子是哑变量把 8 次力度从 0.50 到 0.95 的促销混成一团，只能给一个谁都不代表的平均值。
+            信息在交互项里：同一张表上它 t = 9.5，系数 2.583 对真值 2.500 只差 3.3%。
+          </p>
+        </div>
+      </details>
+      <details>
+        <summary>Q2. 历史上只有 1 次促销时，最小二乘为什么拒绝求解？硬跑一个数有什么坏处？</summary>
+        <div class="ans">
+          <p>
+            因为此时 (1 − d) × Lag1 与 Lag1 只差一个常数倍，两列共线，方程组没有唯一解 ——
+            ols 报设计矩阵接近秩亏，最小主元 / 最大主元 = 1.87e-16。
+            硬跑出来的只是从无穷多组同样「完美」的解里随便挑的一组，
+            既不代表弹性，也不能外推到新情景，却会被写进备货计划。
+            该做的是补数据、改用正则化或引入先验。
+          </p>
+        </div>
+      </details>
+      <details>
+        <summary>Q3. 调整 R² = 0.9103 已经很高了，为什么还要看 κ 的还原误差？</summary>
+        <div class="ans">
+          <p>
+            因为 R² 衡量「曲线贴不贴历史」，不是「学没学对机制」。
+            把促销效应错摊到 Lag1 上的模型反而可能拿到更高的 R²，它有更多自由度去迁就那几个尖峰。
+            还原误差回答的是另一个问题：学回的 2.583 接近真值 2.500，
+            说明模型抓住的是生成数据的机制，而不是历史曲线的形状 —— 只有前者能外推到没见过的折扣力度。
+          </p>
+        </div>
+      </details>
+    </div>
+
+    <p class="lec-foot">
+      本讲数字由 <code>scripts/lecture-facts.mjs</code> 复算（见 <code>lectures/FACTS.txt</code>），
+      数据集与互动模块一致：<code>makePromoDataset({ n: 40, seed: 21 })</code>，
+      真值折扣弹性 κ = 2.500。
+    </p>
+  </article>
+</div>
+
+<script type="module" src="lecture.js"></script>
+</body>
+</html>

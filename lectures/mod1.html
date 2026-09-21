@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 1 讲 时间序列三要素拆解 · Forecast for Planner 讲义</title>
+<meta name="description" content="把销量拆成趋势、季节、残差：为什么要分清长期增长与旺季，加法模型与乘法模型该怎么选，以及居中移动平均两端缺口为什么不能补。">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f6feb'/%3E%3Cpath d='M6 22 L12 14 L17 18 L26 8' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../src/style.css">
+<link rel="stylesheet" href="lecture.css">
+</head>
+<body data-lec="mod1">
+
+<div class="lec-shell">
+  <aside class="lec-toc" id="lecToc"></aside>
+
+  <article class="lec-body">
+    <p class="lec-kicker">第 1 讲 · 数据准备 · REQ-MOD-01</p>
+    <h1 class="lec-h1">时间序列三要素拆解</h1>
+    <p class="lec-lead">
+      销量连着三个月往上走，是产品在长期增长，还是又到了旺季？<strong>这两件事的应对完全相反</strong>：
+      前者要抓紧扩产备货，后者明年这个时候还会再来一遍，按旺季峰值扩产就会在淡季砸在手里。
+      拆解就是把这两个成分从同一条曲线里分出来。
+    </p>
+
+    <h2><span class="h2n">1</span>这一讲要解决的问题</h2>
+    <p>
+      一条历史销量曲线上其实叠着三样东西：
+    </p>
+    <ul>
+      <li><strong>趋势 T</strong>：基本盘在涨还是在跌。决定要不要扩产、要不要加大安全库存。</li>
+      <li><strong>季节 S</strong>：每年同一时段重复出现的规律。决定该提前几个月备货、备多少。</li>
+      <li><strong>残差 R</strong>：剩下的、无法用前两者解释的部分。它衡量"你的模型还缺什么"。</li>
+    </ul>
+    <p>
+      计划员拿到"这个月涨了 30%"这个信息时，如果不知道它是 <b>T</b> 还是 <b>S</b>，就无法判断该不该跟着调整预测。
+      更麻烦的是第三种情况：涨的其实是 <b>R</b>（一次偶发扰动），而计划员当成了 T，于是按照一个不会持续的量级去备了货。
+    </p>
+
+    <h2><span class="h2n">2</span>理论：两种合成方式，对应两类业务</h2>
+    <p>
+      三要素怎么拼成一条曲线，决定了你应该用哪种拆解方式。这不是数学口味问题，而是业务问题：
+    </p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th></th><th>加法模型</th><th>乘法模型</th></tr></thead>
+      <tbody>
+        <tr><th>公式</th><td>Y = T + S + R</td><td>Y = T × S × R</td></tr>
+        <tr><th>季节的表达</th><td>多少<b>件</b>（如旺季 +20 件）</td><td>多少<b>倍</b>（如旺季 ×1.20）</td></tr>
+        <tr><th>隐含的业务假设</th><td>淡旺季的绝对差<b>与规模无关</b></td><td>淡旺季的<b>比例</b>与规模无关，盘子越大，旺季峰值越高</td></tr>
+        <tr><th>典型场景</th><td>成熟稳定品类：不管卖 1000 件还是 2000 件，旺季总是多 200 件</td>
+          <td>成长中品类：基本盘从 1000 涨到 2000，旺季峰值也从 1200 涨到 2400</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="box warn">
+      <p class="box-t">选错了会怎样：外推时的系统性偏差</p>
+      <p>
+        假设真实规律是乘法（旺季 +20%，即 ×1.20）。你在基本盘 1000 件时用加法模型拟合，
+        会得到一个"旺季 +200 件"的季节项。基本盘涨到 2000 件时，真实旺季应该是 <b>+400 件</b>，
+        而你的模型仍然只加 <b>200 件</b> —— <b>旺季被系统性低估一半</b>。
+        这就是为什么成长品类必须用乘法模型。反过来，成熟品类用乘法模型，会在淡季把预测压得过低。
+      </p>
+    </div>
+
+    <h2><span class="h2n">3</span>怎么拆：居中移动平均 + 按周期平均</h2>
+    <p>经典拆解只做两件事，思路朴素但有效：</p>
+    <div class="eq">
+      <span class="lbl">第一步：用「居中移动平均」估计趋势（周期 m = 12 个月）</span>
+      <span class="line">T<sub>t</sub> = <span class="frac"><span class="num">1</span><span class="den">m</span></span> · (Y<sub>t−m/2</sub> + … + Y<sub>t</sub> + … + Y<sub>t+m/2</sub>)</span>
+      <span class="lbl" style="margin-top:8px">第二步：把趋势去掉，剩下的按「同一月份」取平均，得到季节指数</span>
+      <span class="line">加法： S<sub>月</sub> = 平均(Y<sub>t</sub> − T<sub>t</sub>)&nbsp;&nbsp;&nbsp;→ 归一到「均值为 0」</span>
+      <span class="line">乘法： S<sub>月</sub> = 平均(Y<sub>t</sub> ÷ T<sub>t</sub>)&nbsp;&nbsp;&nbsp;→ 归一到「均值为 1」</span>
+      <span class="lbl" style="margin-top:8px">第三步：残差</span>
+      <span class="line">加法： R = Y − T − S&nbsp;&nbsp;&nbsp;乘法： R = Y ÷ (T × S)</span>
+    </div>
+    <p>
+      注意第一步的「居中」两个字：算 t 月的趋势时，同时用到了 <b>t 月前后各 6 个月</b>的数据。
+      这对"事后拆解、看清历史"是必要的（否则趋势会被季节项污染）；
+      但它也意味着<strong>拆解结果不能直接拿来预测</strong> —— 预测时你不可能知道未来的数据。
+      预测要用第 2 讲的单侧窗口方法。
+    </p>
+    <div class="box fact">
+      <p class="box-t">趋势线两端为什么各缺 6 期</p>
+      <p>
+        居中移动平均需要前后各 6 期，所以序列最早和最晚的 6 个月算不出趋势值。
+        互动模块把这两段<b>留空</b>而不是补一个假值 —— 这是刻意的：
+        用单侧数据硬凑一个"趋势"会让两端翘起来，读者会误以为趋势在加速。
+        <b>宁可留缺口，也不伪造一条不存在的趋势线。</b>
+      </p>
+    </div>
+
+    <h2><span class="h2n">4</span>还原能力实测：能不能拆回来</h2>
+    <p>
+      拆解算法好不好，有一个干净的办法检验：<strong>用已知参数合成一条序列，再看拆解能不能把参数还原回来</strong>。
+      互动模块的滑杆就是合成的参数，所以你设了什么，就能对着看拆出了什么。
+      实测（合成参数：趋势 2 件/月、季节振幅 20、噪音 σ=5、72 期）：
+    </p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>你设的（真值）</th><th class="num">拆解还原</th><th>结论</th></tr></thead>
+      <tbody>
+        <tr><td>趋势 2.00 件/月</td><td class="num">2.02 件/月</td><td>误差 1%，趋势可以被稳定读出来</td></tr>
+        <tr><td>季节峰谷差 40 件（±20）</td><td class="num">41 件</td><td>季节波形还原准确</td></tr>
+        <tr><td>噪音 σ = 5 件</td><td class="num">3.9 件</td><td>残差标准差略低于真值 —— 因为一部分噪音被平均进了季节指数</td></tr>
+        <tr><td>—</td><td class="num">9.0%</td><td>噪音占总波动的比例：其余 91% 是趋势与季节（可解释的）</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>
+      那 9.0% 是最值得记住的数字。它是<strong>「这条序列里有多少是不可预测的」</strong>的量化答案。
+      如果它涨到 40%，说明你的模型再怎么调也有一半以上的波动解释不了 ——
+      这时该考虑的不是换算法，而是回到第 0 讲检查数据（是不是缺货、爆单没处理）。
+    </p>
+
+    <h2><span class="h2n">5</span>三个常见误用</h2>
+    <div class="box danger">
+      <p class="box-t">误用一：看到旺季就扩产</p>
+      <p>
+        夏季饮料 6 月销量是 1 月的 3 倍，不代表产能要在 6 月翻三倍 —— 那 2 倍是季节成分，
+        明年还会来，但它是可以提前排产的。真正决定要不要投产能的是<b>趋势项</b>：
+        把最近三年的 6 月放在一起看，如果它们同比在涨，那是趋势；如果一直差不多，那只是季节。
+      </p>
+    </div>
+    <div class="box danger">
+      <p class="box-t">误用二：拿"噪音占总波动"很低就当模型没问题</p>
+      <p>
+        残差小只说明"拆解算法能把这条曲线表示出来"，不说明"曲线是可预测的"。
+        一条 <b>纯随机游走</b>的序列用趋势+季节也能拆出很小的残差，
+        但它的下一步涨跌完全不可预测 —— 拆解从来不是在证明可预测性，只是在做成分归因。
+      </p>
+    </div>
+    <div class="box danger">
+      <p class="box-t">误用三：把残差当垃圾丢掉不看</p>
+      <p>
+        残差是诊断模型的关键证据。<b>好的残差应该像白噪音</b>：无规律、均值为 0、看不出结构。
+        如果残差呈现周期性、或者水平越高残差越大，说明模型设定错了
+        （季节项用了加法但真实是乘法，或者趋势被低估）。
+        互动模块把残差单独画成一条曲线，就是为了让你养成"看残差"的习惯。
+      </p>
+    </div>
+
+    <h2><span class="h2n">6</span>去互动模块验证什么</h2>
+    <div class="cta">
+      <p class="cta-t">打开 <a href="../index.html#mod1">时序拆解模块</a>，按顺序试这几件事</p>
+      <ol>
+        <li>把<b>噪音强度</b>从 5 拉到 30 —— 看"残差 R"子图逐渐变成一团乱麻，
+            同时"季节 S"子图的波形开始被噪音扭曲。这就是"过滤噪音、识别真实规律"的手感。</li>
+        <li>把<b>季节振幅</b>拉到 0 —— 季节子图变成一条平线，"噪音占整体波动"比例飙升。
+            说明波动不一定来自噪音，也可能来自你把结构参数设没了。</li>
+        <li>切到<b>乘法模型</b> —— 季节子图的纵轴从"件"变成"倍数"（如 1.02×）。
+            再想想你的产品更像哪一类。</li>
+        <li>看主图上三条线的对照：实际序列、趋势线、趋势+季节。
+            <b>趋势+季节与实际之间的距离，就是残差</b>。距离越均匀，模型越合适。</li>
+      </ol>
+      <a class="btn" href="../index.html#mod1">去动手 →</a>
+    </div>
+
+    <h2><span class="h2n">7</span>自测题</h2>
+    <div class="ex">
+      <details>
+        <summary>Q1. 你的 SKU 每年 11 月销量是均值的 2 倍，同时三年来的 11 月同比都在涨。该用加法还是乘法模型？</summary>
+        <div class="ans">
+          <p>
+            优先考虑<b>乘法</b>。理由有两个：一是同比在涨，说明基本盘在增长（趋势项存在）；
+            二是"2 倍"这种表述本身就是比例关系 —— 业务方说的是倍数，模型也该用倍数。
+            更稳妥的做法是把两种模型都拟合一遍，比较残差里是否还有结构：
+            乘法模型的残差如果更接近白噪音，就用它。
+          </p>
+        </div>
+      </details>
+      <details>
+        <summary>Q2. 拆解出来的残差标准差是 3.9 件，而你知道生成噪音的 σ 是 5 件。差在哪？</summary>
+        <div class="ans">
+          <p>
+            差值来自"平均"这个动作。季节指数是<b>同一月份多个年份的平均值</b>，
+            这个平均过程会把落在同一月份上的噪音也平均进去，
+            于是从残差里"吸走"了一部分噪音。所以残差标准差通常略小于真实噪音 σ。
+            这个偏差不是 bug，而是拆解方法固有的性质；它提醒你
+            <b>不要用残差标准差直接当噪音的真值</b>。
+          </p>
+        </div>
+      </details>
+      <details>
+        <summary>Q3. 业务方要求"把趋势线往两端延长一点，好看清趋势"，该答应吗？</summary>
+        <div class="ans">
+          <p>
+            不该。两端各 6 期算不出居中移动平均，任何"延长"都是在用单侧数据外推。
+            想看清长期方向，正确做法是<b>换一个更长的窗口</b>（例如用 12 个月的居中平均看年度趋势），
+            而不是把缺口补上。留缺口是诚实，补缺口是造假 ——
+            这一段缺口本身就是"这里我没有足够证据"的准确表达。
+          </p>
+        </div>
+      </details>
+    </div>
+
+    <p class="lec-foot">
+      本讲数字由 <code>scripts/lecture-facts.mjs</code> 复算得出（输出见 <code>lectures/FACTS.txt</code>），
+      合成参数与互动模块的 <code>synthSeries({ n: 72, trend: 2, seasonality: 20, noise: 5, seed: 4242 })</code> 完全一致，
+      可用 <code>node scripts/lecture-facts.mjs</code> 逐项核对。
+    </p>
+  </article>
+</div>
+
+<script type="module" src="lecture.js"></script>
+</body>
+</html>

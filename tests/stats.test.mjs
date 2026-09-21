@@ -113,7 +113,9 @@ test('compose 与 synthSeries 两条独立实现在加法模式下必须逐位�
 });
 
 test('季节项输出量化到 1e-12（跨引擎一致性），而未量化的值不满足该性质', () => {
-  const c = compose({ n: 12, base: 1000, trend: 0, seasonality: 20, noise: 0 });
+  // 零噪音序列正是本测试要的：compose 不生成随机数，不传 seedSeries 就是零噪音
+  // （早先这里传 `noise: 0`，而 compose 的 noise 参数其实从未被使用 —— 已改为显式拒绝）
+  const c = compose({ n: 12, base: 1000, trend: 0, seasonality: 20 });
   for (const v of c) {
     const scaled = v * 1e12;
     assert.ok(Math.abs(scaled - Math.round(scaled)) < 1e-6, `${v} 不是 1e-12 的整数倍`);

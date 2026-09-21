@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 5 讲 Prophet 式组件拆解 · Forecast for Planner 讲义</title>
+<meta name="description" content="把一条销量曲线拆成趋势与变点、周内谐波、年度谐波、节假日窗口四组可解释组件；实测变点从 0 到 2 到 6 的调整 R² 与残差变化，以及为什么不能靠 R² 的小数位选加法还是乘法。">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f6feb'/%3E%3Cpath d='M6 22 L12 14 L17 18 L26 8' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../src/style.css">
+<link rel="stylesheet" href="lecture.css">
+</head>
+<body data-lec="mod5">
+
+<div class="lec-shell">
+  <aside class="lec-toc" id="lecToc"></aside>
+
+  <article class="lec-body">
+    <p class="lec-kicker">第 5 讲 · 特征与机器学习 · REQ-MOD-06</p>
+    <h1 class="lec-h1">Prophet 式组件拆解</h1>
+    <p class="lec-lead">
+      一条曲线拆成四块：方向有没有换挡、周几最旺、哪几个月是旺季、春节前后差多少。
+      每一块都能单独拿给业务方看 —— 这是这套方法真正的价值，不在精度。
+    </p>
+
+    <h2><span class="h2n">1</span>这一讲要解决的问题</h2>
+    <p>
+      前面几讲解决的是「怎么算出一条预测线」：平滑、拆趋势季节、加特征。
+      但业务方问的通常不是数字，而是「为什么下周的预测比这周高」；
+      只给结果、说不清来源的模型，在会上答不出这句话。
+    </p>
+    <p>
+      组件拆解的做法是把预测写成几项<strong>各自有业务含义</strong>的组件之和，
+      每一项都能单独念出来、单独拿去和业务方对齐。这一讲回答三件事：
+      拆成哪四组、变点该给几个、哪里最容易翻车。
+    </p>
+
+    <h2><span class="h2n">2</span>理论：把一条曲线拆成四组可解释的组件</h2>
+    <p>一条日销量曲线里叠着四种性质不同的东西，每一种都对得上一个业务问题：</p>
+    <ul>
+      <li>
+        <strong>趋势 + 变点 g(t)</strong> —— 长期方向有没有换挡。真值变点在第
+        <b>365 天（2024-01-01）</b>与第 <b>730 天（2025-01-01）</b>。
+      </li>
+      <li>
+        <strong>周内谐波 s<sub>周</sub>(t)</strong> —— 周几旺、周几淡。实测最旺在
+        <b>周日</b>、最淡在<b>周四</b>，可直接用于排班与发货。
+      </li>
+      <li>
+        <strong>年度谐波 s<sub>年</sub>(t)</strong> —— 淡旺季。几组正余弦平滑地表达全年波形，比每月一个哑变量省参数。
+      </li>
+      <li>
+        <strong>节假日窗口 h(t)</strong> —— 春节、国庆、双 11 这类不按公历规整重复的日子怎么调。
+        每个节日拆成独立窗口，实测：
+      </li>
+    </ul>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>窗口</th><th class="num">相对基准</th><th class="prose">业务含义</th></tr></thead>
+      <tbody>
+        <tr><td>春节 · 节前 1 天</td><td class="num">+31.7%</td><td class="prose">全年最强单日拉升</td></tr>
+        <tr><td>春节 · 假期 8 天</td><td class="num">-51.1%</td><td class="prose">渠道停摆，需求塌掉一半</td></tr>
+        <tr><td>国庆 · 节前 1 天</td><td class="num">+9.4%</td><td class="prose">节前小高峰，远弱于春节</td></tr>
+        <tr><td>国庆 · 假期 8 天</td><td class="num">-27.7%</td><td class="prose">跌幅明显小于春节</td></tr>
+        <tr><td>双 11 · 当天</td><td class="num">+23.4%</td><td class="prose">单日脉冲，不拉长</td></tr>
+        <tr><td>双 11 · 假期</td><td class="num">-15.0%</td><td class="prose">大促窗口过后回落</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>最该记住的是春节两行：节前 1 天 <strong>+31.7%</strong>，假期 8 天 <strong>-51.1%</strong> —— 方向相反，量级都很大。</p>
+    <div class="box tip">
+      <p class="box-t">为什么春节必须拆成两个窗口</p>
+      <p>
+        只放一个「春节」哑变量，等于去拟合这两段的正负平均：节前高峰被拉低，假期塌陷被抬高，两边都不准。
+        渠道囤货与终端停摆本来就是两件事，分开建之后，
+        +31.7% 与 -51.1% 还能各自拿去和销售对账。
+      </p>
+    </div>
+
+    <h2><span class="h2n">3</span>公式与设计矩阵</h2>
+    <p>四组组件相加，就是这一讲的全部模型：</p>
+    <div class="eq">
+      <span class="lbl">组件加法形式</span>
+      <span class="line">Ŷ<sub>t</sub> = g(t) + s<sub>周</sub>(t) + s<sub>年</sub>(t) + h(t)</span>
+      <span class="lbl" style="margin-top:8px">趋势：分段直线，每个变点在它那天改变斜率</span>
+      <span class="line">g(t) = (m + Σ<sub>i</sub> δ<sub>i</sub> · I(t > τ<sub>i</sub>)) + (b + Σ<sub>i</sub> γ<sub>i</sub> · I(t > τ<sub>i</sub>)) · t</span>
+      <span class="lbl" style="margin-top:8px">周内与年度：傅里叶级数（谐波），P 为对应周期</span>
+      <span class="line">s(t) = Σ<sub>n</sub> [ a<sub>n</sub> cos(2π n t / P) + b<sub>n</sub> sin(2π n t / P) ]</span>
+      <span class="lbl" style="margin-top:8px">节假日：每个窗口一个哑变量</span>
+      <span class="line">h(t) = Σ<sub>w</sub> κ<sub>w</sub> · I(t ∈ 窗口 w)</span>
+    </div>
+    <p>
+      把这些项排成设计矩阵：每行一天，每列一个未知系数。拟合完每一列都能单独读 ——
+      节前那列对上 +31.7%，你就能指着它说这是节日备货。变点的代价也很直白：
+      <strong>每多一个变点，设计矩阵就多一列</strong>，后面的取舍都在这一列值不值上。
+    </p>
+    <div class="box fact">
+      <p class="box-t">参数个数就是列数</p>
+      <p>
+        实测参数个数：k=0 时 16 个，k=2 时 18 个，k=6 时 22 个。关系可以直接算：
+        0 到 2 多 2 个变点、多 2 个参数（16+2=18）；2 到 6 多 4 个变点、多 4 个参数（18+4=22）。
+        一个变点一列。
+      </p>
+    </div>
+
+    <h2><span class="h2n">4</span>实测：变点数量的取舍</h2>
+    <p>同一份数据（2023-01-01 ~ 2025-12-30，共 1095 天），只改变点数量 k：</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>变点数量 k</th><th class="num">调整 R²</th><th class="num">残差 σ</th><th class="num">参数个数</th><th class="prose">结论</th></tr></thead>
+      <tbody>
+        <tr><td>k = 0</td><td class="num">0.8938</td><td class="num">63.7 件</td><td class="num">16</td><td class="prose">没有变点，转向看不见</td></tr>
+        <tr><td>k = 2</td><td class="num">0.9253</td><td class="num">53.4 件</td><td class="num">18</td><td class="prose">两个变点换来明显改善</td></tr>
+        <tr><td>k = 6</td><td class="num">0.9245</td><td class="num">53.7 件</td><td class="num">22</td><td class="prose">多给 4 个变点，分数反而更低</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>三行要连着三列一起读：</p>
+    <ul>
+      <li>
+        <strong>0 到 2 是真收获</strong>：调整 R² 从 0.8938 升到 0.9253（差 0.0315），
+        残差 σ 从 63.7 件降到 53.4 件（降 10.3 件），只多 2 个参数。
+      </li>
+      <li>
+        <strong>2 到 6 是白花钱</strong>：调整 R² 反而从 0.9253 落到 0.9245（差 0.0008），
+        残差 σ 从 53.4 件回升到 53.7 件（升 0.3 件），参数却从 18 涨到 22。
+      </li>
+      <li>
+        <strong>调整 R² 已经在惩罚多余的变点</strong>：它按自由度扣减，k=6 多占了 4 列也没把分数换回来。
+      </li>
+    </ul>
+    <p>
+      变点越多越贴合历史，外推时也更容易把噪音当成新趋势：k=6 多出来的变点很可能只是在拟合
+      某一年的偶发扰动，到未来 60 天会变成被延长的斜率。
+    </p>
+    <div class="box fact">
+      <p class="box-t">默认 k=2 的实际表现</p>
+      <p>
+        默认 k=2 时识别出的变点在第 <b>365 天</b>与第 <b>730 天</b>，和真值变点完全一致。
+        未来 60 天日均预测 <b>1568 件/天</b>，最近 30 天日均实际 <b>1559 件/天</b>，两者相差 0.6%
+        （1568 − 1559 = 9 件/天，9 ÷ 1559 ≈ 0.6%）。
+        这说明趋势项暂时没有跑偏 —— 只是旁证，不保证未来 60 天一定准。
+      </p>
+    </div>
+    <div class="box warn">
+      <p class="box-t">外推风险：趋势项会线性外推</p>
+      <p>
+        第 730 天之后的斜率一旦被估成向上，未来 60 天的预测就一条道往上走，
+        模型内部没有机制能让它拐回来。这是这类方法最危险的地方，也是必须给预测区间的原因。
+      </p>
+    </div>
+
+    <h2><span class="h2n">5</span>三个常见误用</h2>
+    <div class="box danger">
+      <p class="box-t">误用一：拿回测分数最高的那个 k 当答案</p>
+      <p>
+        变点位置和数量都在同一份历史上挑，挑出来的自然最贴合历史，这里有运气：
+        k=2 与 k=6 的调整 R² 只差 0.0008、参数差 4 个，在回测里几乎分不出来。
+        更稳的做法是<strong>由业务事实给定变点</strong> —— 2024-01 换了供应商、2025-01 上了新渠道，就把它直接放进去。
+      </p>
+    </div>
+    <div class="box danger">
+      <p class="box-t">误用二：长假只放一个哑变量</p>
+      <p>
+        春节节前 +31.7%、假期 -51.1%，方向相反，合成一项会得到一个既不代表节前也不代表节中的系数：
+        备货高峰被拉低，假期塌陷被抬高。必须拆成节前、节中（必要时加节后）独立窗口。
+        国庆结构相同（+9.4% / -27.7%），幅度小得多。
+      </p>
+    </div>
+    <div class="box danger">
+      <p class="box-t">误用三：靠调整 R² 的小数位选加法还是乘法</p>
+      <p>
+        实测加法 0.9253、乘法 0.9235，差 0.0018，不值得当依据。
+        按业务含义选：波幅随盘子等比放大（基本盘翻倍，旺季高峰也跟着放大）用乘法；
+        波幅是固定的绝对件数用加法。R² 的第四位小数没有决定权。
+      </p>
+    </div>
+
+    <h2><span class="h2n">6</span>去互动模块验证什么</h2>
+    <div class="cta">
+      <p class="cta-t">打开 <a href="../index.html#mod5">Prophet 式组件拆解模块</a>，按顺序试这几件事</p>
+      <ol>
+        <li>把 <b>k 从 0 拖到 2</b> —— 调整 R² 从 0.8938 升到 0.9253，残差 σ 从 63.7 件降到 53.4 件，参数从 16 涨到 18。</li>
+        <li>再拖到 <b>k=6</b> —— 调整 R² 回落到 0.9245、残差 σ 反弹到 53.7 件、参数涨到 22 个。多并不等于好，这是看得见的。</li>
+        <li>看图上<b>变点标记</b>是否落在第 365 天与第 730 天，对应 2024-01-01 与 2025-01-01。</li>
+        <li>调出<b>周内组件</b>：最高在周日、最低在周四，再问自己要不要写进下周的排班与发货计划。</li>
+        <li>切一遍<b>加法与乘法</b>（调整 R² 只差 0.0018），最后看<b>未来 60 天的预测带</b> —— 越往右越宽。</li>
+      </ol>
+      <a class="btn" href="../index.html#mod5">去动手 →</a>
+    </div>
+
+    <h2><span class="h2n">7</span>自测题</h2>
+    <div class="ex">
+      <details>
+        <summary>Q1. k 从 2 加到 6，参数多了 4 个、拟合能力更强，为什么调整 R² 反而从 0.9253 掉到 0.9245？</summary>
+        <div class="ans">
+          <p>
+            因为用的是调整 R²，它按自由度做了扣减。多 4 个变点等于多 4 列，
+            换来的残差改善不足以抵消扣掉的自由度。残差 σ 同时从 53.4 件回升到 53.7 件，
+            说明这些变点没在解释结构，只在贴合噪音。对照 0 到 2：多 2 个参数换来
+            调整 R² 升 0.0315、残差 σ 降 10.3 件，那才是买到了结构。
+          </p>
+        </div>
+      </details>
+      <details>
+        <summary>Q2. 春节效应只有节前 1 天 +31.7% 和假期 8 天 -51.1% 两个数，合成一个「春节」项会怎样？</summary>
+        <div class="ans">
+          <p>
+            合出来的系数会被 8 天的大跌主导，整体偏负，对两段窗口都不成立 ——
+            节前是全年最强的单日拉升，假期才是塌陷。后果是节前备货不足、节中库存压得太高。
+            拆成节前与节中两个窗口，各自得到一个能对账的系数（+31.7% 与 -51.1%）。
+          </p>
+        </div>
+      </details>
+      <details>
+        <summary>Q3. 加法 0.9253 / 乘法 0.9235 只差 0.0018，那到底该用哪个？</summary>
+        <div class="ans">
+          <p>
+            用业务含义定，不用小数点定。问一句：基本盘翻倍时，旺季高峰是跟着一起放大（比例不变），
+            还是仍然只高出同样多的件数（绝对差不变）？前者用乘法，后者用加法。
+            实在说不清时才回头看残差：谁的残差更像白噪音就用谁。
+          </p>
+        </div>
+      </details>
+    </div>
+
+    <p class="lec-foot">
+      本讲数字由 <code>scripts/lecture-facts.mjs</code> 复算（输出见 <code>lectures/FACTS.txt</code>），
+      数据集与互动模块一致：<code>makeDailyDataset({ n: 1095, seed: 2023 })</code>。
+    </p>
+  </article>
+</div>
+
+<script type="module" src="lecture.js"></script>
+</body>
+</html>

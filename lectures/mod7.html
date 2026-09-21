@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 7 讲 服务水平与安全库存 · Forecast for Planner 讲义</title>
+<meta name="description" content="把服务水平从 95% 提到 99% 要花多少钱：安全库存公式、成本曲线的凸性（每提高 1 个百分点的边际成本放大 5 倍），以及单位不一致会高估 2.08 倍。">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f6feb'/%3E%3Cpath d='M6 22 L12 14 L17 18 L26 8' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../src/style.css">
+<link rel="stylesheet" href="lecture.css">
+</head>
+<body data-lec="mod7">
+
+<div class="lec-shell">
+  <aside class="lec-toc" id="lecToc"></aside>
+
+  <article class="lec-body">
+    <p class="lec-kicker">第 7 讲 · 业务闭环 · REQ-MOD-04</p>
+    <h1 class="lec-h1">服务水平与安全库存</h1>
+    <p class="lec-lead">
+      前面六讲都在处理"预测得多准"，这一讲回答"预测不准要付多少钱"。
+      安全库存是预测误差的财务定价 —— 把 σ 从残差标准差变成库存件数、再变成年度持有成本。
+      学会这一讲，你就能把"多备一点点"这句话当场换算成一个数字。
+    </p>
+
+    <h2><span class="h2n">1</span>这一讲要解决的问题</h2>
+    <p>
+      销售总监说"客户不能断货，多备一点点"。这句话的问题不在方向（备货确实能降低缺货），
+      而在<b>没有量级也没有代价</b>。这一讲要做的是把"一点点"变成三行数字：
+    </p>
+    <ul>
+      <li>要多少件安全库存（SS）？</li>
+      <li>它一年占用多少钱？</li>
+      <li>再往上提一个百分点，还要多花多少？</li>
+    </ul>
+    <p>
+      而且这一讲的结论可以事先算好带去开会：<strong>服务水平的成本曲线是凸的</strong> ——
+      越往上，每提高一个百分点的边际成本越高。本讲会把倍数算出来。
+    </p>
+
+    <h2><span class="h2n">2</span>理论：安全库存补的是"不确定性"</h2>
+    <p>
+      安全库存要对付两件事叠加：<b>需求本身在波动</b>，以及<b>提前期里我们无法及时补货</b>。
+      两者相乘的结果，就是提前期内的需求标准差：
+    </p>
+    <div class="eq">
+      <span class="lbl">提前期内需求的标准差（L 为提前期期数，σ 为单期需求/预测残差标准差）</span>
+      <span class="line">σ<sub>L</sub> = σ · √L</span>
+      <span class="lbl" style="margin-top:8px">安全库存公式</span>
+      <span class="line">SS = Z(SL) · σ · √L</span>
+      <span class="lbl" style="margin-top:8px">Z 是标准正态的逆函数： Z = Φ<sup>−1</sup>(SL)</span>
+      <span class="line">SL = 95% → Z = 1.6449&nbsp;&nbsp;&nbsp;SL = 99% → Z = 2.3263&nbsp;&nbsp;&nbsp;SL = 99.9% → Z = 3.0902</span>
+      <span class="lbl" style="margin-top:8px">年持有成本</span>
+      <span class="line">年持有成本 = SS × 单件成本 × 年持有成本率</span>
+    </div>
+    <div class="box tip">
+      <p class="box-t">√L 这一个根号，比提高服务水平值钱得多</p>
+      <p>
+        注意 σ·√L 里是<b>平方根</b>，不是 L。提前期从 1 个月延长到 4 个月，不确定性只放大 2 倍
+        （√4 = 2），不是 4 倍。反过来看：<b>把提前期从 4 个月压到 1 个月，安全库存直接砍一半</b> ——
+        这通常比"把服务水平从 95% 提到 99%"（成本要增加 41%）划算得多。
+        拿到这个公式，第一个该问的问题往往是"能不能缩短提前期"，而不是"要不要提高服务水平"。
+      </p>
+    </div>
+
+    <h2><span class="h2n">3</span>实测：一条 SKU 在不同服务水平下的代价</h2>
+    <p>
+      互动模块用一条真实规模感的 SKU：月度预测残差 σ = <b>861 件/月</b>
+      （来自第 3 讲那套指数平滑的残差，不是拍出来的常数），采购提前期 L = <b>4 个月</b>，
+      单件成本 100 元，年持有成本率 20%（仓储 + 资金占用 + 跌价/呆滞损失）。
+    </p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th class="num">服务水平 SL</th><th class="num">Z 值</th><th class="num">安全库存 SS</th><th class="num">年持有成本</th><th class="prose">缺货频率的直观说法</th></tr></thead>
+      <tbody>
+        <tr><td class="num">90.0%</td><td class="num">1.2816</td><td class="num">2207 件</td><td class="num">4.41 万元</td><td class="prose">10 个订货周期缺 1 次</td></tr>
+        <tr><td class="num">95.0%</td><td class="num">1.6449</td><td class="num">2832 件</td><td class="num">5.66 万元</td><td class="prose">20 个周期缺 1 次</td></tr>
+        <tr><td class="num">99.0%</td><td class="num">2.3263</td><td class="num">4006 件</td><td class="num">8.01 万元</td><td class="prose">100 个周期缺 1 次</td></tr>
+        <tr><td class="num">99.9%</td><td class="num">3.0902</td><td class="num">5321 件</td><td class="num">10.64 万元</td><td class="prose">1000 个周期缺 1 次</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>
+      从 95% 走到 99.9%，缺货概率降到原来的五十分之一（5% → 0.1%），
+      代价是安全库存从 2832 件涨到 5321 件、年持有成本从 5.66 万元涨到 10.64 万元。
+      这个交换值不值，取决于缺货一次的真实损失 —— 而那通常没人算过。
+      <b>这一讲能给你的，就是把这笔账的左边算准。</b>
+    </p>
+
+    <h3>边际成本：越往上越贵</h3>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>区间</th><th class="num">跨度</th><th class="num">SS 增加</th><th class="num">成本增加</th><th class="num">每提高 1 个百分点的成本</th></tr></thead>
+      <tbody>
+        <tr><td>95% → 99%</td><td class="num">4 个百分点</td><td class="num">1174 件</td><td class="num">2.35 万元</td><td class="num">5868 元</td></tr>
+        <tr><td>99% → 99.9%</td><td class="num">0.9 个百分点</td><td class="num">1315 件</td><td class="num">2.63 万元</td><td class="num">29231 元</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="box fact">
+      <p class="box-t">本讲最值钱的一个数字：4.98 倍</p>
+      <p>
+        在 99% 以上区间，每提高 1 个百分点的边际成本是 95%~99% 区间的 <b>4.98 倍</b>。
+        这就是可以用在会议桌上的那句话：<b>"服务水平越往上，性价比越差，而且差得很快。"</b>
+        注意这个倍数是从本条 SKU 的参数算出来的（σ=861、L=4、单价 100、持有率 20%），
+        换成别的 SKU 数值会变，但<b>凸性</b>是公式本身决定的，不会变。
+      </p>
+    </div>
+    <div class="box warn">
+      <p class="box-t">这里刻意不说的一句话</p>
+      <p>
+        很多材料会写"服务水平趋近 100% 时安全库存趋于无穷"。这句话在数学上指的是
+        Φ<sup>−1</sup> 在 SL→1 时发散，但它在业务上<strong>没有可操作性</strong>：
+        99.9% 处的 Z 只是 3.0902，相对 95% 的 1.6449 只涨了不到一倍。
+        可证明、可复算的结论是<b>成本曲线的凸性（边际成本放大 4.98 倍）</b>，
+        不是"趋于无穷"这种听上去更有冲击力但算不出业务动作的说法。
+      </p>
+    </div>
+
+    <h2><span class="h2n">4</span>三个常见误用</h2>
+    <div class="box danger">
+      <p class="box-t">误用一：σ 用"预测准确率的倒数"瞎凑</p>
+      <p>
+        σ 必须是<b>预测残差的标准差</b>（第 6 讲讲的那个样本外 σ），单位要与提前期一致。
+        用"准确率 90% 所以 σ = 10%"这类换算，量纲根本对不上 ——
+        10% 是相对量，SS 公式要的是绝对件数。本讲的 σ=861 件/月 是从 60 期月度序列的
+        指数平滑残差里算出来的，可以追溯。
+      </p>
+    </div>
+    <div class="box danger">
+      <p class="box-t">误用二：σ 与 L 单位不一致（错一倍）</p>
+      <p>
+        这是现场最常见的一类事故。如果 σ 是<b>月度</b>的（861 件/月），
+        而提前期你按<b>周</b>填了 4（其实是 4 周 ≈ 0.92 个月），
+        那就把 L 放大了 4.345 倍，SS 会高估 <b>2.08 倍</b>（√4.345）—— 直接多备一倍货。
+        反向的错误（把月数当周数）则低估同样的倍数，变成缺货隐患。
+        <b>先说清单位，再套公式。</b>
+      </p>
+    </div>
+    <div class="box danger">
+      <p class="box-t">误用三：对所有 SKU 用同一个服务水平</p>
+      <p>
+        同样的 99%，对 A 类高毛利品的成本和 C 类低值慢销品的成本完全不是一个量级；
+        而缺货一次的损失也完全不同（关键备件缺货可能停线，长尾品缺货只是少卖一件）。
+        正确做法是按<b>缺货损失 / 持有成本</b>的比值分组，高比值给高服务水平。
+        公式给的是"给定 SL 算成本"，选 SL 是业务决策，不能由公式代劳。
+      </p>
+    </div>
+
+    <h2><span class="h2n">5</span>去互动模块验证什么</h2>
+    <div class="cta">
+      <p class="cta-t">打开 <a href="../index.html#mod7">安全库存模块</a>，按顺序试这几件事</p>
+      <ol>
+        <li>把<b>服务水平从 95% 拖到 99%</b>，看"Z 因子"从 1.6449 涨到 2.3263、
+            "安全库存 SS"从 2832 涨到 4006、"年持有成本"从 5.66 万涨到 8.01 万 ——
+            三个数字同步上涨，而缺货概率只从 5% 降到 1%。</li>
+        <li>看成本曲线右端怎么翘起来：<b>当前位置的红色圆点标记</b>会跟着你拖动滑杆移动，
+            越靠右曲线越陡。这就是"凸性"的手感。</li>
+        <li>把<b>提前期单位</b>在「月」与「周（需要换算）」之间切换 ——
+            看换算与否让 SS 差出 <b>2.08 倍</b>。这就是单位错配的真实代价。</li>
+        <li>把<b>年持有成本率</b>从 20% 调到 35%，看年持有成本整体上移 ——
+            持有成本率往往是最容易被低估的参数（资金成本、仓储、跌价都算进去了吗）。</li>
+      </ol>
+      <a class="btn" href="../index.html#mod7">去动手 →</a>
+    </div>
+
+    <h2><span class="h2n">6</span>自测题</h2>
+    <div class="ex">
+      <details>
+        <summary>Q1. 提前期从 4 个月压到 1 个月，安全库存能降多少？</summary>
+        <div class="ans">
+          <p>
+            SS ∝ √L，√1/√4 = 1/2，所以安全库存<b>直接砍一半</b>。
+            以 95% 服务水平为例，2832 件会降到约 1416 件，年持有成本从 5.66 万元降到约 2.83 万元。
+            对比一下提高服务水平的路径：从 95% 提到 99%，安全库存只增加 1174 件
+            （约 41%），却要多花 2.35 万元/年。
+            <b>缩短提前期通常比提高服务水平划算</b>，这一条应该写进你的改进清单。
+          </p>
+        </div>
+      </details>
+      <details>
+        <summary>Q2. 销售要求"从 99% 提到 99.9%"，你该怎么回应？</summary>
+        <div class="ans">
+          <p>
+            先算代价：SS 从 4006 涨到 5321 件（+1315 件），年持有成本从 8.01 万涨到 10.64 万
+            （+2.63 万元/年）；按每 1 个百分点算是 <b>29231 元</b>，
+            是 95%→99% 区间（5868 元/个百分点）的 <b>4.98 倍</b>。
+            再问收益：缺货概率从 1% 降到 0.1%，也就是 100 个订货周期里从缺 1 次变成缺 0.1 次
+            —— 按你们的订货周期频率换算成"一年少缺几次"，乘以每次缺货的真实损失，
+            两边一对比，结论就出来了。拿不出"每次缺货损失多少钱"的话，
+            这笔账无法算，应该先补这个数。
+          </p>
+        </div>
+      </details>
+      <details>
+        <summary>Q3. 为什么说 σ·√L 里的根号比 Z 值更重要？</summary>
+        <div class="ans">
+          <p>
+            因为它们的杠杆不同。Z 在常用区间（90%~99.9%）只从 1.2816 变到 3.0902，约 2.4 倍；
+            而 √L 随提前期直接变化，把 L 从 4 压到 1 就是减半。
+            更别说 σ 本身：第 0 讲把缺货假零点和爆单清洗干净之后，
+            σ 可能下降 30%~40%，安全库存会等比下降。
+            <b>降低波动（数据质量）与缩短提前期（流程），都比提高服务水平更划算。</b>
+          </p>
+        </div>
+      </details>
+    </div>
+
+    <p class="lec-foot">
+      本讲数字由 <code>scripts/lecture-facts.mjs</code> 复算（见 <code>lectures/FACTS.txt</code>）：
+      σ = 861 件/月 来自 <code>synthSeries({ n: 48, base: 12000, trend: 90, seasonality: 1500, noise: 600, seed: 707 })</code>
+      的指数平滑残差；L = 4 个月、单件成本 100 元、年持有成本率 20% 与互动模块默认值一致。
+      安全库存公式的实现见 <code>src/core/inventory.js</code>（含 Acklam + Halley 迭代的 Φ<sup>−1</sup> 实现，
+      与 scipy 实测最大偏差 9.3e-15）。
+    </p>
+  </article>
+</div>
+
+<script type="module" src="lecture.js"></script>
+</body>
+</html>

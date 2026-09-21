@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 3 讲 阻尼三次指数平滑 · Forecast for Planner 讲义</title>
+<meta name="description" content="alpha/beta/gamma/phi 四个参数各对应一句业务话；以及一个常见错觉：调阻尼系数并不能降低预测的不确定性。">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f6feb'/%3E%3Cpath d='M6 22 L12 14 L17 18 L26 8' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../src/style.css">
+<link rel="stylesheet" href="lecture.css">
+</head>
+<body data-lec="mod3">
+
+<div class="lec-shell">
+  <aside class="lec-toc" id="lecToc"></aside>
+
+  <article class="lec-body">
+    <p class="lec-kicker">第 3 讲 · 传统统计 · REQ-MOD-05</p>
+    <h1 class="lec-h1">阻尼三次指数平滑</h1>
+    <p class="lec-lead">
+      移动平均对所有历史一视同仁（或用线性权重），而指数平滑让"记忆"按指数衰减 ——
+      近期数据几乎决定当前水平，很久以前的数据只留下一点点影响力。
+      代价是引入了四个参数：α、β、γ、φ。这一讲给每个参数配一句业务话。
+    </p>
+
+    <h2><span class="h2n">1</span>这一讲要解决的问题</h2>
+    <p>
+      ERP 与 APS 系统里常年挂着 α、β、γ 三个希腊字母，多数计划员的做法是"不动它"。
+      不动的原因不是它不重要，而是没人解释过它。这一讲把它们翻译成业务语言，
+      并且<strong>把每个参数的作用方向量出来</strong>：调大它会怎样、代价是什么。
+    </p>
+    <p>
+      这个方法的正式名字是 Holt-Winters 三次指数平滑：<b>水平（Level）</b>、<b>趋势（Trend）</b>、
+      <b>季节（Seasonal）</b>三个状态各自被一个参数控制，逐期滚动更新。
+    </p>
+
+    <h2><span class="h2n">2</span>公式与四个参数的业务含义</h2>
+    <div class="eq">
+      <span class="lbl">三个状态方程（加法季节，周期 m = 12）</span>
+      <span class="line">水平： L<sub>t</sub> = α(Y<sub>t</sub> − S<sub>t−m</sub>) + (1−α)(L<sub>t−1</sub> + φT<sub>t−1</sub>)</span>
+      <span class="line">趋势： T<sub>t</sub> = β(L<sub>t</sub> − L<sub>t−1</sub>) + (1−β)φT<sub>t−1</sub></span>
+      <span class="line">季节： S<sub>t</sub> = γ(Y<sub>t</sub> − L<sub>t−1</sub> − T<sub>t−1</sub>) + (1−γ)S<sub>t−m</sub></span>
+      <span class="lbl" style="margin-top:8px">一步预测与 h 期外推（含阻尼）</span>
+      <span class="line">Ŷ<sub>t+1</sub> = L<sub>t</sub> + φT<sub>t</sub> + S<sub>t+1−m</sub></span>
+      <span class="line">Ŷ<sub>t+h</sub> = L<sub>t</sub> + (φ + φ² + … + φ<sup>h</sup>)T<sub>t</sub> + S<sub>t+h−m</sub></span>
+    </div>
+    <p>每个参数只回答一个问题：</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>参数</th><th>控制什么</th><th class="prose">调大 →</th><th class="prose">调小 →</th></tr></thead>
+      <tbody>
+        <tr><td>α 水平</td><td>当前基准水平的更新速度</td><td class="prose">更快追随最新一期，抗噪差（"惊弓之鸟"）</td><td class="prose">更依赖历史平稳，转向慢（"迟钝的恐龙"）</td></tr>
+        <tr><td>β 趋势</td><td>趋势斜率的更新速度</td><td class="prose">斜率变化反应快，容易把单期波动当成趋势</td><td class="prose">斜率更稳，但真实转向时跟不上</td></tr>
+        <tr><td>γ 季节</td><td>季节波形的更新速度</td><td class="prose">季节性随新数据快速调整</td><td class="prose">季节形态更稳定，对真实季节变化不敏感</td></tr>
+        <tr><td>φ 阻尼</td><td>趋势外推时的衰减强度</td><td class="prose">趋近 1 时几乎不衰减（长期外推会一路线性上翘）</td><td class="prose">趋近 0.8 时趋势很快衰减，长期预测趋于水平</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="box warn">
+      <p class="box-t">本实现不是最优化求解，这一点必须说清楚</p>
+      <p>
+        本工具的初始状态取"前两个完整季节的均值与斜率差"，属于标准但<b>非最优</b>的做法；
+        参数 α、β、γ、φ 由你给定，不做联合最优化。
+        因此这里的数字<b>不会</b>与 statsmodels 等库逐位一致 ——
+        那些库会把初始状态一起最优化掉。本工具的目标是让你看清<b>参数的作用方向</b>，
+        不是复现某个库的输出。
+      </p>
+    </div>
+
+    <h2><span class="h2n">3</span>实测：参数一动，什么在变</h2>
+    <p>
+      互动模块的序列是 60 期月度数据（2020-01 ~ 2024-12），默认参数
+      α=0.30、β=0.10、γ=0.20、φ=0.98。在这一组参数下：
+    </p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>指标</th><th class="num">数值</th><th class="prose">怎么读</th></tr></thead>
+      <tbody>
+        <tr><td>拟合 RMSE</td><td class="num">32 件</td><td class="prose">模型对历史的还原误差</td></tr>
+        <tr><td>拟合 MAE</td><td class="num">25 件</td><td class="prose">平均每期偏 25 件</td></tr>
+        <tr><td>残差标准差 σ</td><td class="num">33 件</td><td class="prose">下一讲要把这个 σ 换算成库存</td></tr>
+        <tr><td>第 12 期预测</td><td class="num">1238 件</td><td class="prose">比最新一期实际高 2.0%</td></tr>
+        <tr><td>第 12 期预测区间宽度</td><td class="num">442 件</td><td class="prose">95% 区间的上下界之差</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p>
+      下面这张表是本讲的重点 —— 把 φ 从 0.80 一路拉到 1.00，看它改变了什么、<b>没</b>改变什么：
+    </p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th class="num">φ</th><th class="num">第 12 期预测</th><th class="num">区间宽度</th><th class="num">拟合 RMSE</th><th class="prose">说明</th></tr></thead>
+      <tbody>
+        <tr><td class="num">0.80</td><td class="num">1209 件</td><td class="num">441 件</td><td class="num">33 件</td><td class="prose">趋势很快衰减，长期预测趋于水平</td></tr>
+        <tr><td class="num">0.90</td><td class="num">1217 件</td><td class="num">442 件</td><td class="num">33 件</td><td class="prose">居中</td></tr>
+        <tr><td class="num">0.98</td><td class="num">1238 件</td><td class="num">442 件</td><td class="num">32 件</td><td class="prose">默认值</td></tr>
+        <tr><td class="num">1.00</td><td class="num">1250 件</td><td class="num">442 件</td><td class="num">32 件</td><td class="prose">不衰减，趋势线性外推</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="box fact">
+      <p class="box-t">关键发现：阻尼只压趋势幅度，不降低不确定性</p>
+      <p>
+        φ 从 1.00 降到 0.98，第 12 期预测从 <b>1250 件</b> 降到 <b>1238 件</b> —— 只有 0.9% 的差别。
+        而预测区间宽度在 φ=0.80 到 1.00 之间始终是 <b>441~442 件</b>，几乎一动不动。
+      </p>
+      <p>
+        原因是区间公式只看残差 σ 与期数 h：σ<sub>h</sub> = σ·√h，<b>与 φ 无关</b>。
+        阻尼压的是"趋势外推走多远"（点预测），不是"我们对未来有多不确定"（区间）。
+        <b>把 φ 调小 ≠ 预测变准了</b>，它只是让长期预测更保守，不确定性并没有变小。
+      </p>
+    </div>
+    <p>
+      另一个量化阻尼的角度是趋势权重的累计和：未来 12 期的趋势系数之和是
+      Σφ<sup>i</sup>（i=1…12）= <b>10.55</b>（φ=1 时是 12）。
+      也就是说 φ=0.98 下，未来 12 期只"吃进"了 10.55 期的趋势量，比线性外推少了约 12%。
+    </p>
+
+    <h2><span class="h2n">4</span>三个常见误用</h2>
+    <div class="box danger">
+      <p class="box-t">误用一：为了"更准"把 α 调到 0.8 以上</p>
+      <p>
+        α 大意味着水平几乎等于最新一期。在噪音小的稳定品类上，它确实让预测跟得紧；
+        但一旦某个月出现偶发大单（第 0 讲讲过的爆单），模型会立刻把这次爆单当成新水平，
+        并顺着趋势项继续外推 —— 预测会连着几期偏高。
+        <b>α 的选择本质上是在"反应快"与"抗噪"之间选边</b>，没有免费的一侧。
+      </p>
+    </div>
+    <div class="box danger">
+      <p class="box-t">误用二：以为阻尼能解决趋势外推的不可靠</p>
+      <p>
+        阻尼只是让趋势衰减得更快，它并不能阻止趋势项继续往同一个方向走。
+        真正的解法是：对超过一个季节周期（12 期）的预测<b>不要相信趋势项</b>，
+        改为按季节形态 + 水平来做判断，并且把区间当作主要输出。
+        需要更长期的判断，就该引入外部变量（第 4、5 讲），而不是继续调 φ。
+      </p>
+    </div>
+    <div class="box danger">
+      <p class="box-t">误用三：拿不同工具的数字互相校验到小数点后</p>
+      <p>
+        不同实现（本工具 / ERP 内置 / statsmodels）在初始状态与最优化策略上不同，
+        拟合出的参数不会一致。校验时应该比<b>方向与量级</b>（趋势往哪走、季节峰在哪个月、
+        误差在同一量级），而不是比最后一位小数。本讲所有数字都可复算，
+        但复算对象是本实现，不是任何第三方库。
+      </p>
+    </div>
+
+    <h2><span class="h2n">5</span>去互动模块验证什么</h2>
+    <div class="cta">
+      <p class="cta-t">打开 <a href="../index.html#mod3">指数平滑模块</a>，按顺序试这几件事</p>
+      <ol>
+        <li>把 <b>φ 从 0.98 拖到 0.80</b>，盯住"第 12 期预测"与"预测区间宽度"两个数字 ——
+            前者从 1238 掉到 1209，后者的 441~442 几乎不动。这就是"阻尼只压点预测"的证据。</li>
+        <li>把 <b>φ 拖到 1.00</b>，看图上红色点线（无阻尼对照）与橙色预测线分开 —— 差额就是阻尼省下的量级。</li>
+        <li>把 <b>α 从 0.30 拖到 0.90</b>，看拟合线如何紧贴历史、而预测线的起伏如何被放大。</li>
+        <li>看"模型风格仪表"给出的风格标签（如均衡型）与四个"第 12 期趋势累计权重"，
+            对照上面的 Σφ<sup>i</sup> = 10.55。</li>
+      </ol>
+      <a class="btn" href="../index.html#mod3">去动手 →</a>
+    </div>
+
+    <h2><span class="h2n">6</span>自测题</h2>
+    <div class="ex">
+      <details>
+        <summary>Q1. 把 φ 从 0.98 调到 0.80，预测区间宽 442 件几乎没变。这说明什么？</summary>
+        <div class="ans">
+          <p>
+            说明阻尼改变的是<b>点预测的趋势外推幅度</b>，不是模型对未来的不确定程度。
+            区间宽度由 σ·√h 决定（本实现的简化式），与 φ 无关。
+            业务含义：调 φ 不会让你"更有把握"，只是让长期预测更保守。
+            如果你觉得区间太宽，要动的是数据质量（清洗、把异常剔除干净以降低 σ），
+            而不是 φ。
+          </p>
+        </div>
+      </details>
+      <details>
+        <summary>Q2. 一条明显在下行通道里的 SKU，α 该往大调还是往小调？</summary>
+        <div class="ans">
+          <p>
+            往大调（但要配合 β）。下行的关键信息是"水平在往下走"，
+            大的 α 让水平项更快跟上；此时真正决定预测斜率的是 β 与趋势项，
+            所以也要确认 β 不至于把单月波动放大成趋势。
+            需要警惕的反向场景是：下行期间夹杂偶发的低价清库存大单，
+            这时大的 α 会把清库存误读为需求反弹。
+            <b>先看残差里有没有这种孤立大单（第 0 讲），再决定 α。</b>
+          </p>
+        </div>
+      </details>
+      <details>
+        <summary>Q3. 为什么本工具的指数平滑结果不能和 statsmodels 对齐到小数点？</summary>
+        <div class="ans">
+          <p>
+            因为初始状态的处理不同。本工具用"前两个完整季节的均值与斜率差"作为固定初值，
+            参数由使用者给定；statsmodels 会把初始状态和 α、β、γ 一起做最优化。
+            两者解的是不同的问题：前者可解释、可复现、便于教学；后者拟合更优，
+            但参数含义被初值吸收了。所以比对时看方向与量级，不要比末位。
+          </p>
+        </div>
+      </details>
+    </div>
+
+    <p class="lec-foot">
+      本讲数字由 <code>scripts/lecture-facts.mjs</code> 复算（见 <code>lectures/FACTS.txt</code>），
+      数据集与互动模块一致：<code>synthSeries({ n: 60, start: '2020-01', base: 1000, trend: 4, seasonality: 60, noise: 25, seed: 33 })</code>，
+      默认参数 α=0.30 β=0.10 γ=0.20 φ=0.98。
+    </p>
+  </article>
+</div>
+
+<script type="module" src="lecture.js"></script>
+</body>
+</html>
