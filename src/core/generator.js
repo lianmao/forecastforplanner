@@ -125,14 +125,21 @@ export function makeTurningPointSeries({
  * 脏数据注入 —— 专供模块 0（清洗实验）。
  * 返回「干净真值」与「脏序列」两份，让 UI 能画对比图，测试能验证修复效果。
  *
+ * ★ 刻意同时注入**两级**异常：
+ *   极端爆单（3.2 倍，远超任何 k 的上界）与中等幅度异常（1.2~1.7 倍，正好落在
+ *   k 的判定边界之间）。只放极端爆单的话，k 滑杆在 1.5~3.0 全范围内都不会改变
+ *   任何判定 —— 计划员拖动滑杆看不到反馈，会以为工具坏了。
+ *   真实脏数据本来就是这样：既有大客户一次性团购，也有中等幅度的偶发加单。
+ *
  * @param {object} o
  * @param {number[]} o.cleanValues 干净序列
- * @param {number[]} o.spikeIndices 大宗偶发爆单的位置（乘 spikeFactor 倍）
- * @param {number} o.spikeFactor 爆单倍数，默认 3.2
+ * @param {number[]} o.spikeIndices 极端爆单位置（乘 spikeFactor 倍）
+ * @param {number} o.spikeFactor 极端爆单倍数，默认 3.2
+ * @param {Array<{index:number, factor:number}>} o.spikes 中等幅度异常（各自指定倍数）
  * @param {Array<[number,number]>} o.stockoutRuns 缺货断供区间 [起, 止]（闭区间），置 0
  */
 export function injectDirty({
-  cleanValues, spikeIndices = [], spikeFactor = 3.2, stockoutRuns = [],
+  cleanValues, spikeIndices = [], spikeFactor = 3.2, spikes = [], stockoutRuns = [],
 } = {}) {
   if (!Array.isArray(cleanValues) || cleanValues.length === 0) {
     throw new RangeError('injectDirty: cleanValues 不能为空');
@@ -143,6 +150,15 @@ export function injectDirty({
     if (!Number.isInteger(i) || i < 0 || i >= n) throw new RangeError(`injectDirty: 爆单位置越界 ${i}`);
     values[i] = cleanValues[i] * spikeFactor;
   }
+  const moderate = [];
+  for (const { index, factor } of spikes) {
+    if (!Number.isInteger(index) || index < 0 || index >= n) {
+      throw new RangeError(`injectDirty: 中等异常位置越界 ${index}`);
+    }
+    if (!(factor > 0)) throw new RangeError(`injectDirty: 中等异常倍数需 >0，收到 ${factor}`);
+    values[index] = cleanValues[index] * factor;
+    moderate.push(index);
+  }
   const zeroed = [];
   for (const [s, e] of stockoutRuns) {
     if (!Number.isInteger(s) || !Number.isInteger(e) || s < 0 || e >= n || s > e) {
@@ -150,22 +166,39 @@ export function injectDirty({
     }
     for (let i = s; i <= e; i++) { values[i] = 0; zeroed.push(i); }
   }
+  const allSpikes = [...new Set([...spikeIndices, ...moderate])].sort((a, b) => a - b);
   return {
     values,
-    truth: { cleanValues: cleanValues.slice(), spikeIndices: [...spikeIndices], stockoutRuns: stockoutRuns.map((r) => [...r]), zeroed },
+    truth: {
+      cleanValues: cleanValues.slice(),
+      spikeIndices: allSpikes,
+      extremeSpikeIndices: [...spikeIndices],
+      moderateSpikeIndices: moderate,
+      stockoutRuns: stockoutRuns.map((r) => [...r]),
+      zeroed,
+    },
   };
 }
 
 /**
  * 默认的教学用脏数据集（模块 0）。
- * 爆单 2 处 + 缺货 2 段（其中一段 3 期连续），并保留干净真值。
+ * 2 处极端爆单 + 4 处中等幅度异常 + 2 段缺货（其中一段 3 期连续），并保留干净真值。
+ * 中等异常的目标值落在 k 滑杆的判定边界之间，保证 k 在 1.0~3.0 全程都有可观察的反馈。
  */
 export function makeCleaningDataset({
   n = 48, base = 1200, trend = 6, seasonality = 180, noise = 90, seed = 2020,
   spikeIndices = [10, 31], stockoutRuns = [[19, 20], [37, 39]],
+  moderateSpikes = [
+    { index: 6, factor: 1.63 },
+    { index: 14, factor: 1.19 },
+    { index: 26, factor: 1.20 },
+    { index: 40, factor: 1.36 },
+  ],
 } = {}) {
   const clean = synthSeries({ n, start: '2021-01', base, trend, seasonality, noise, seed });
-  const dirty = injectDirty({ cleanValues: clean.values, spikeIndices, spikeFactor: 3.2, stockoutRuns });
+  const dirty = injectDirty({
+    cleanValues: clean.values, spikeIndices, spikeFactor: 3.2, spikes: moderateSpikes, stockoutRuns,
+  });
   return { labels: clean.labels, ...dirty, components: clean.components };
 }
 

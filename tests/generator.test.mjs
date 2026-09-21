@@ -87,17 +87,42 @@ test('injectDirty 精确注入爆单与缺货，且不污染传入的干净序�
   assert.deepEqual(clean, snapshot, 'injectDirty 不能改动调用方传入的数组');
   assert.deepEqual(r.truth.cleanValues, snapshot);
   assert.deepEqual(r.truth.zeroed, [10, 11, 12]);
+  assert.deepEqual(r.truth.spikeIndices, [3]);
   assert.throws(() => injectDirty({ cleanValues: clean, spikeIndices: [99] }), /爆单位置越界/);
   assert.throws(() => injectDirty({ cleanValues: clean, stockoutRuns: [[5, 99]] }), /缺货区间非法/);
 });
 
-test('makeCleaningDataset 默认含 2 处爆单 + 2 段缺货，且真值可对照', () => {
+test('injectDirty 支持两级异常，且各自记账', () => {
+  const clean = new Array(20).fill(100);
+  const r = injectDirty({
+    cleanValues: clean,
+    spikeIndices: [2],
+    spikeFactor: 3.2,
+    spikes: [{ index: 5, factor: 1.6 }, { index: 9, factor: 1.3 }],
+  });
+  assert.equal(r.values[2], 320);
+  assert.equal(r.values[5], 160);
+  assert.equal(r.values[9], 130);
+  assert.deepEqual(r.truth.extremeSpikeIndices, [2]);
+  assert.deepEqual(r.truth.moderateSpikeIndices, [5, 9]);
+  assert.deepEqual(r.truth.spikeIndices, [2, 5, 9], '汇总列表按位置升序');
+  assert.throws(() => injectDirty({ cleanValues: clean, spikes: [{ index: 99, factor: 1.5 }] }), /中等异常位置越界/);
+  assert.throws(() => injectDirty({ cleanValues: clean, spikes: [{ index: 1, factor: 0 }] }), /中等异常倍数需 >0/);
+});
+
+test('makeCleaningDataset 默认含 2 处极端爆单 + 4 处中等异常 + 2 段缺货', () => {
   const d = makeCleaningDataset();
-  assert.equal(d.truth.spikeIndices.length, 2);
+  assert.equal(d.truth.extremeSpikeIndices.length, 2);
+  assert.equal(d.truth.moderateSpikeIndices.length, 4);
+  assert.equal(d.truth.spikeIndices.length, 6);
   assert.equal(d.truth.stockoutRuns.length, 2);
   assert.equal(d.values.length, d.truth.cleanValues.length);
-  for (const i of d.truth.spikeIndices) {
-    assert.ok(d.values[i] > d.truth.cleanValues[i] * 3, `位置 ${i} 未被爆单放大`);
+  for (const i of d.truth.extremeSpikeIndices) {
+    assert.ok(d.values[i] > d.truth.cleanValues[i] * 3, `位置 ${i} 未被放大到 3 倍以上`);
+  }
+  for (const i of d.truth.moderateSpikeIndices) {
+    const ratio = d.values[i] / d.truth.cleanValues[i];
+    assert.ok(ratio > 1.1 && ratio < 2, `中等异常位置 ${i} 的倍数 ${ratio.toFixed(2)} 应落在 1.1~2 之间`);
   }
   for (const [s, e] of d.truth.stockoutRuns) {
     for (let i = s; i <= e; i++) assert.equal(d.values[i], 0);

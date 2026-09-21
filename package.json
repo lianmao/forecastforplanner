@@ -1,17 +1,18 @@
 {
   "name": "forecastforplanner",
+  "version": "0.1.0",
   "private": true,
-  "version": "1.0.0",
   "type": "module",
+  "description": "Forecast for Planner — 供应链计划员统计与机器学习预测互动教程 (纯前端静态应用)",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
-  },
-  "dependencies": {
-    "echarts": "^5.5.0"
+    "test": "node --test tests/*.test.mjs",
+    "serve": "node scripts/serve.mjs",
+    "vendor": "node scripts/build-vendor.mjs",
+    "check": "node scripts/browser-check.mjs",
+    "shot": "node scripts/screenshot.mjs"
   },
   "devDependencies": {
-    "vite": "^5.2.11"
+    "echarts": "^5.5.1",
+    "esbuild": "^0.28.2"
   }
 }

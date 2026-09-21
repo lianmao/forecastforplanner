@@ -7,6 +7,7 @@ import {
   quantile, iqrBounds, winsorize, medianReplace, dropInterpolate,
   detectStockoutRuns, repairStockouts, describe, cleanSeries, linearFill,
 } from '../src/core/cleaning.js';
+import { makeCleaningDataset } from '../src/core/generator.js';
 
 const TEN = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
@@ -141,6 +142,31 @@ test('cleanSeries：缺货策略为 keep 时零值豁免，不被盖帽抬起来
   assert.ok(r.values[9] < 150, '爆单应被截断');
   assert.equal(r.meta.clipped.length, 1);
   assert.equal(r.meta.clipped[0].index, 9);
+});
+
+test('★ 可用性断言：k 滑杆在 1.0~3.0 全程都必须有可观察的反馈（截断数单调不增且确有变化）', () => {
+  // 这条断言来自一个真实缺陷：早期数据集只有 3.2 倍的极端爆单，远超任何 k 的上界，
+  // 于是 k 从 1.5 到 3.0 不作任何改变 —— 计划员拖动滑杆毫无反馈，会以为工具坏了。
+  // 数据侧补了 4 处中等幅度异常（落在判定边界之间）之后才成立。
+  const d = makeCleaningDataset();
+  const exempt = new Set();
+  for (const [s, e] of d.truth.stockoutRuns) for (let i = s; i <= e; i++) exempt.add(i);
+  const pool = d.values.filter((_, i) => !exempt.has(i));
+
+  const counts = [];
+  for (const k of [1.0, 1.5, 2.0, 2.5, 3.0]) {
+    const b = iqrBounds(pool, k);
+    counts.push(d.values.filter((v, i) => !exempt.has(i) && (v > b.upper || v < b.lower)).length);
+  }
+  for (let i = 1; i < counts.length; i++) {
+    assert.ok(counts[i] <= counts[i - 1], `k 增大时截断数必须单调不增：${counts.join(' → ')}`);
+  }
+  assert.ok(counts[0] > counts[counts.length - 1],
+    `k 从 1.0 到 3.0 必须真的改变判定结果，实际 ${counts.join(' → ')}`);
+  // 而且在这条路径上，清洗确实改变了序列（不是"判定了但没改"）
+  const c1 = cleanSeries(d.values, { outlierMethod: 'winsorize', k: 1.5, stockoutMethod: 'keep' });
+  const c2 = cleanSeries(d.values, { outlierMethod: 'winsorize', k: 2.5, stockoutMethod: 'keep' });
+  assert.notDeepEqual(c1.values, c2.values, '不同 k 下清洗结果必须不同');
 });
 
 test('cleanSeries 清洗后 CV 应下降（否则说明清洗没起作用）', () => {

@@ -131,6 +131,15 @@ export function buildGamDesign(labels, {
 
 /**
  * 拟合 GAM 并拆出各组件序列（供组件小图直接绘制）。
+ *
+ * ★ mode='multiplicative' 的实现方式与 Prophet 一致：**在对数空间拟合，再指数变换回去**。
+ *   y → log(y) 后做加性 GAM，等价于原始尺度上的乘法结构 Y = T × S_week × S_year × H。
+ *   返回的分量因此是"倍数因子"（如 1.08 = 高于基准 8%），趋势分量则是水平本身。
+ *   乘法残差 = 实际 ÷ 拟合，是无量纲倍数，可直接和 1 比较。
+ *   注意：R² / 残差 σ 是**对数空间**的数字，别拿去和加法模式横向比。
+ *
+ * 无论哪种模式，都保证：fitted + residual = 原序列（加法）或 fitted × residual = 原序列（乘法）。
+ *
  * @param {string[]} labels
  * @param {number[]} values
  * @returns {{fit:object, names:string[], groups:object,
@@ -139,11 +148,20 @@ export function buildGamDesign(labels, {
  */
 export function fitGam(labels, values, options = {}) {
   const opt = { ...DEFAULT_GAM_OPTIONS, ...options };
+  const mode = opt.mode || 'additive';
+  if (mode !== 'additive' && mode !== 'multiplicative') {
+    throw new RangeError(`fitGam: mode 只能是 additive / multiplicative，收到 ${mode}`);
+  }
   if (labels.length !== values.length) {
     throw new RangeError(`fitGam: labels 与 values 长度不一致 (${labels.length} vs ${values.length})`);
   }
+  if (mode === 'multiplicative' && values.some((v) => v <= 0)) {
+    throw new RangeError('fitGam: 乘法模式要求全部为正数（存在 0 或负值，常见于缺货归零，请先清洗）');
+  }
+  const y = mode === 'multiplicative' ? values.map((v) => Math.log(v)) : values;
+
   const { X, names, groups, changepoints: cps, droppedChangepoints, droppedColumns } = buildGamDesign(labels, opt);
-  const fit = ols(X, values, { minRowsPerParam: opt.minRowsPerParam ?? 2 });
+  const fit = ols(X, y, { minRowsPerParam: opt.minRowsPerParam ?? 2 });
 
   const contrib = (cols) => {
     const out = new Array(values.length).fill(0);
@@ -152,14 +170,25 @@ export function fitGam(labels, values, options = {}) {
     }
     return out;
   };
-  const trend = contrib(groups.trend);
+  let trend = contrib(groups.trend);
   // 截距归入趋势项（它是趋势的基线水平，不该平摊到别处）
   for (let i = 0; i < trend.length; i++) trend[i] += fit.beta[0];
-  const weekly = contrib(groups.weekly);
-  const yearly = contrib(groups.yearly);
-  const holiday = contrib(groups.holiday);
-  const fitted = trend.map((v, i) => v + weekly[i] + yearly[i] + holiday[i]);
-  const residual = values.map((v, i) => v - fitted[i]);
+  let weekly = contrib(groups.weekly);
+  let yearly = contrib(groups.yearly);
+  let holiday = contrib(groups.holiday);
+  const fittedRaw = trend.map((v, i) => v + weekly[i] + yearly[i] + holiday[i]);
+
+  let fitted;
+  let residual;
+  if (mode === 'multiplicative') {
+    const ex = (a) => a.map(Math.exp);
+    trend = ex(trend); weekly = ex(weekly); yearly = ex(yearly); holiday = ex(holiday);
+    fitted = ex(fittedRaw);
+    residual = values.map((v, i) => v / fitted[i]);   // 乘性残差：1.05 表示高估 5%
+  } else {
+    fitted = fittedRaw;
+    residual = values.map((v, i) => v - fitted[i]);
+  }
 
   // 分段斜率：t 的系数 = 首段斜率；每个变点列的系数 = 该点的斜率增量
   const slopes = [fit.beta[1]];
@@ -192,6 +221,7 @@ export function fitGam(labels, values, options = {}) {
     }));
 
   const summary = {
+    mode,
     slopes,
     changepoints: cps,
     droppedChangepoints,
@@ -208,26 +238,36 @@ export function fitGam(labels, values, options = {}) {
     n: fit.n,
   };
 
-  return { fit, names, groups, X, labels, options: opt, components: { trend, weekly, yearly, holiday, residual, fitted }, summary };
+  return { fit, names, groups, X, labels, options: opt, mode, components: { trend, weekly, yearly, holiday, residual, fitted }, summary };
 }
 
 /**
  * 未来外推：用已拟合模型预测未来日期。
  * 注意外推的风险 —— 周度/年度项可以照旧，但**趋势项会线性外推**，
- * 这正是 Prophet 需要“趋势不确定性区间”的原因；此处给出 ±z·σ 的朴素区间。
+ * 这正是 Prophet 需要"趋势不确定性区间"的原因；此处给出 ±z·σ 的朴素区间。
+ *
+ * 乘法模式下在对数空间预测后指数还原，区间也用乘性形式（mean × e^±zσ），
+ * 这样区间不会在低量级时出现负的下界。
  */
 export function forecastGam(model, futureLabels, { z = 1.959963984540054 } = {}) {
-  const { fit, names, groups } = model;
+  const { fit, names, summary } = model;
   const opt = model.options || DEFAULT_GAM_OPTIONS;
+  const mult = model.mode === 'multiplicative';
   // 用完整标签序列重建设计矩阵，保证 t 连续、周期基函数对齐
   const allLabels = [...model.labels, ...futureLabels];
-  const { X } = buildGamDesign(allLabels, { ...opt, changepoints: model.summary.changepoints });
+  const { X } = buildGamDesign(allLabels, { ...opt, changepoints: summary.changepoints });
   const out = [];
   for (let i = model.labels.length; i < allLabels.length; i++) {
     let yhat = fit.beta[0];
     for (let j = 0; j < names.length; j++) yhat += fit.beta[j + 1] * X[i][j];
-    const sig = fit.sigma * Math.sqrt(1 + (i - model.labels.length));
-    out.push({ label: allLabels[i], mean: yhat, lower: yhat - z * sig, upper: yhat + z * sig });
+    const h = i - model.labels.length + 1;
+    const sig = fit.sigma * Math.sqrt(h);
+    if (mult) {
+      const m = Math.exp(yhat);
+      out.push({ label: allLabels[i], mean: m, lower: m * Math.exp(-z * sig), upper: m * Math.exp(z * sig) });
+    } else {
+      out.push({ label: allLabels[i], mean: yhat, lower: yhat - z * sig, upper: yhat + z * sig });
+    }
   }
   return out;
 }

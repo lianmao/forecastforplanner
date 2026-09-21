@@ -164,6 +164,49 @@ test('回归测试：样本短于变点位置时，必须丢弃超范围变点�
   assert.ok(g2.summary.holidayEffects.every((h) => Number.isFinite(h.coef)));
 });
 
+test('乘法模式：对数空间拟合，分量作乘性因子，fitted × residual = 原序列', () => {
+  const d = makeDailyDataset({ n: 400, seed: 3 });
+  const g = fitGam(d.labels, d.values, { mode: 'multiplicative' });
+  assert.equal(g.mode, 'multiplicative');
+  assert.equal(g.summary.mode, 'multiplicative');
+  // 乘性残差是无量纲倍数，均值应接近 1
+  const res = g.components.residual;
+  const mean = res.reduce((a, b) => a + b, 0) / res.length;
+  assert.ok(Math.abs(mean - 1) < 0.02, `乘性残差均值 ${mean}`);
+  // 恒等关系：fitted × residual = 原序列
+  for (let i = 0; i < d.values.length; i++) {
+    assert.ok(Math.abs(g.components.fitted[i] * res[i] - d.values[i]) < 1e-9, `第 ${i} 期不满足乘性恒等`);
+  }
+  // 各分量相乘 = fitted（把它拆开再乘回去必须还原）
+  for (let i = 0; i < d.values.length; i++) {
+    const prod = g.components.trend[i] * g.components.weekly[i]
+      * g.components.yearly[i] * g.components.holiday[i];
+    assert.ok(Math.abs(prod / g.components.fitted[i] - 1) < 1e-9, `第 ${i} 期分量乘积 ≠ fitted`);
+  }
+  // 周度因子应围绕 1 波动（而不是围绕 0）
+  const wm = g.components.weekly.reduce((a, b) => a + b, 0) / g.components.weekly.length;
+  assert.ok(wm > 0.9 && wm < 1.1, `周度因子均值 ${wm} 应接近 1`);
+});
+
+test('乘法模式拒绝含 0 或负值的序列（缺货归零必须先清洗）', () => {
+  const labels = dailyLabels('2023-01-01', 30);
+  const values = new Array(30).fill(100);
+  values[5] = 0;
+  assert.throws(() => fitGam(labels, values, { mode: 'multiplicative' }), /全部为正数/);
+  assert.throws(() => fitGam(labels, values, { mode: 'sqrt' }), /mode 只能是/);
+});
+
+test('乘法模式的未来区间不会出现负下界', () => {
+  const d = makeDailyDataset({ n: 400, seed: 3 });
+  const g = fitGam(d.labels, d.values, { mode: 'multiplicative' });
+  const fc = forecastGam(g, futureLabels(d.labels, 60));
+  assert.equal(fc.length, 60);
+  for (const p of fc) {
+    assert.ok(p.mean > 0 && p.lower > 0, '乘性区间的下界必须为正');
+    assert.ok(p.lower < p.mean && p.upper > p.mean);
+  }
+});
+
 test('GAM 内部一致性：fitted + residual 必须逐位等于原始序列', () => {
   const d = makeDailyDataset({ n: 400, seed: 9 });
   const g = fitGam(d.labels, d.values);

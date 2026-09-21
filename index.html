@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Forecast for Planner · 供应链计划员预测互动教程</title>
+<meta name="description" content="用互动滑杆与实时图表，把时间序列拆解、移动平均、指数平滑、促销特征、Prophet 组件拆解、误差偏向与安全库存成本串成一条从预测到库存决策的闭环。纯前端运行，数据不出本机。">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231f6feb'/%3E%3Cpath d='M6 22 L12 14 L17 18 L26 8' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+
+<a class="skip" href="#view">跳到内容</a>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-text">
+      <strong>Forecast for Planner</strong>
+      <span class="brand-sub">供应链计划员 · 统计与机器学习预测互动教程</span>
+    </span>
+  </div>
+  <div class="topbar-actions">
+    <button type="button" id="btn-reset-all" class="btn btn-ghost" title="把当前模块的控件恢复为默认值">恢复默认参数</button>
+    <button type="button" id="btn-nav-toggle" class="btn btn-ghost nav-toggle" aria-expanded="false" aria-controls="rail">目录</button>
+  </div>
+</header>
+
+<div class="shell">
+  <nav id="rail" class="rail" aria-label="模块导航">
+    <p class="rail-head">从预测数字到库存决策</p>
+    <ol id="rail-list" class="rail-list"></ol>
+    <p class="rail-foot">
+      所有计算都在你自己的浏览器里完成，<strong>不上传任何数据</strong>。
+    </p>
+  </nav>
+
+  <main id="view" class="view" tabindex="-1"></main>
+</div>
+
+<footer class="foot">
+  <p>
+    纯前端单页应用 · 全部算法在浏览器本地运行 · 无需安装、无需服务器
+  </p>
+  <p class="foot-dim">
+    预测的核心不是追求虚幻的「绝对精准」，而是<em>降低业务不确定性</em>。
+  </p>
+</footer>
+
+<script type="module" src="src/app.js"></script>
+</body>
+</html>
