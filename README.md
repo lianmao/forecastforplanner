@@ -50,29 +50,20 @@ node scripts/serve.mjs 8110          # 然后打开 http://localhost:8110/
 ## 验证（四层，全部可复现）
 
 ```bash
-# ① 算法层：118 项单测，纯 node，无需浏览器（约 0.4 秒）
-node --test tests/*.test.mjs
+npm run serve &        # 终端 A：本地静态服务器 http://localhost:8110/
 
-# ② 真浏览器探针：8 个模块 × 38 个控件逐个驱动，断言每个控件都产生可见效果
-node scripts/serve.mjs 8110 &
-READY_EXPR="document.documentElement.dataset.ffpReady === 'true' && document.querySelectorAll('.rail-item').length === 8" \
-  node scripts/browser-check.mjs http://localhost:8110/ scripts/driver-all.mjs
+npm run test           # ① 算法层：118 项单测，纯 node，无需浏览器（约 0.4 秒）
+npm run check          # ② 真浏览器：8 模块 × 38 控件逐个驱动，断言每个控件都产生可见效果
+npm run check:mobile   # ③ 移动端：44px 触控目标、无横向溢出、导航默认收起
+npm run shots          # ④ 截图到 /tmp/ffp-shots —— 然后**必须人眼看**
 
-# ③ 移动端布局与触控目标（44px 硬要求、无横向溢出、导航默认收起）
-WINDOW_SIZE=420,800 READY_EXPR="document.documentElement.dataset.ffpReady === 'true'" \
-  node scripts/browser-check.mjs http://localhost:8110/ scripts/driver-mobile.mjs
-
-# ④ 截图后**必须人眼看**（空图表、错位、字面标签只有图片能暴露）
-node scripts/screenshot.mjs http://localhost:8110/ /tmp/shots scripts/steps-shots.mjs
-
-# 参数标定脚本（改动数据集设计或特征工程后重跑，用实测数字更新测试容差）
-node scripts/calibrate-promo.mjs
-node scripts/measure-recovery.mjs
+npm run check:live     # 对线上部署跑同一套真浏览器检查
+npm run calibrate      # 改动数据集设计或特征工程后重跑，用实测数字更新测试容差
 ```
 
 第 ②③④ 层不是可选项。本项目抓到的最严重的几个缺陷（图表宽度为零、多子图叠在一起、
-页面显示字面 `<strong>` 标签）**全部**是这两层发现的，单元测试对它们完全无感 ——
-详见 `DECISIONS.md`。
+页面显示字面 `<strong>` 标签、误差阴影锚到 0 轴以下）**全部**是这两层发现的，
+单元测试对它们完全无感 —— 详见 `DECISIONS.md` 的 D10。
 
 ---
 
