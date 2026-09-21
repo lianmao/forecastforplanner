@@ -16,7 +16,11 @@ const BASE = process.env.BASE || 'http://localhost:8110/lectures/';
 const PAGES = ['', 'mod0.html', 'mod1.html', 'mod2.html', 'mod3.html', 'mod4.html',
   'mod5.html', 'mod6.html', 'mod7.html'];
 
-const READY = "!!document.querySelector('.lec-body')";
+// ★ 就绪门必须等到 lecture.js **执行完**：顶部条与目录都是它注入的。
+//   早期版本用的是 !!document.querySelector('.lec-body') —— 那个元素本来就在静态 HTML 里，
+//   于是门在模块执行前就通过了：本地（1ms 加载完）侥幸全绿，线上（1~2 秒）9 页全挂。
+//   教训：就绪门要断言"JS 跑过之后的产物"，不能断言静态 HTML 里已有的东西。
+const READY = "!!document.querySelector('.lec-top') && document.querySelectorAll('#lecToc a').length > 1";
 const results = [];
 
 for (const p of PAGES) {
